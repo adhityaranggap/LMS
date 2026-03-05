@@ -315,6 +315,7 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
         id: studentId,
         role: 'student',
         course: courseId,
+        photo: photo || undefined,
         is_face_registered: !!(faceStatus?.is_face_registered),
       },
     });

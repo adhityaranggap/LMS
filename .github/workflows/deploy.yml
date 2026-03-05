@@ -88,4 +88,19 @@ jobs:
             echo ">> Service status:"
             docker compose -f docker-compose.prod.yml ps
 
+            # Recreate biulms-ssl nginx (its --link to biulms breaks after biulms is recreated)
+            echo ">> Recreating nginx SSL proxy..."
+            docker rm -f biulms-ssl || true
+            # Ensure nginx-ssl.conf is a file (Docker can accidentally create it as a dir)
+            [ -d /root/biulms/nginx-ssl.conf ] && rmdir /root/biulms/nginx-ssl.conf || true
+            # Keep the deployed nginx-ssl.conf in sync with the repo
+            cp "$APP_DIR/nginx-ssl.conf" /root/biulms/nginx-ssl.conf 2>/dev/null || true
+            docker run -d --name biulms-ssl \
+              --link biulms:biulms \
+              --restart unless-stopped \
+              -p 80:80 -p 443:443 \
+              -v /root/biulms/nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro \
+              -v /etc/letsencrypt:/etc/letsencrypt:ro \
+              nginx:alpine
+
             echo ">> Deployment complete! https://biu.lingkunganplus.com"
