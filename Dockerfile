@@ -53,9 +53,10 @@ RUN npm ci --ignore-scripts && \
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy server source
+# Copy server source + src/data (server imports syllabus data from src/)
 COPY server.ts ./
 COPY server/ ./server/
+COPY src/data/ ./src/data/
 COPY tsconfig.json ./
 COPY scripts/ ./scripts/
 
