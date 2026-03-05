@@ -9,13 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files first for layer caching
+# Copy package files + postinstall script for layer caching
 COPY package.json package-lock.json ./
+COPY scripts/ ./scripts/
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy source
+# Copy remaining source
 COPY . .
 
 # Build frontend (produces dist/)
@@ -33,14 +34,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
+# Copy package files + postinstall script
 COPY package.json package-lock.json ./
+COPY scripts/ ./scripts/
 
-# Install production + devDependencies needed for tsx to run server
+# Install all dependencies (tsx needed to run server)
 RUN npm ci
-
-# Run postinstall script
-RUN node scripts/setup-tfjs-shim.js
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
@@ -49,7 +48,6 @@ COPY --from=builder /app/dist ./dist
 COPY server.ts ./
 COPY server/ ./server/
 COPY tsconfig.json ./
-COPY scripts/ ./scripts/
 
 # Data directory for SQLite (will be mounted as volume)
 RUN mkdir -p /data
