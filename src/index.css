@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  /* Remap indigo → Bina Insani brand green (#019642) */
+  --color-indigo-50:  #f0fdf4;
+  --color-indigo-100: #dcfce7;
+  --color-indigo-200: #bbf7d0;
+  --color-indigo-300: #86efac;
+  --color-indigo-400: #4ade80;
+  --color-indigo-500: #22c55e;
+  --color-indigo-600: #019642;
+  --color-indigo-700: #00682d;
+  --color-indigo-800: #166534;
+  --color-indigo-900: #14532d;
+  --color-indigo-950: #052e16;
+}

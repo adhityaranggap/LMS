@@ -1,0 +1,7 @@
+{
+  "name": "InfoSec Testing Course",
+  "description": "Interactive learning platform for Information Security Testing (Pengujian Keamanan Informasi) course.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
