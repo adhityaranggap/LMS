@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, XCircle, HelpCircle, Send, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, HelpCircle, Send, RefreshCw, AlertTriangle } from 'lucide-react';
 import { QuizQuestion } from '../data/syllabus';
 import { api } from '../lib/api';
 import { useQuizAttempts } from '../hooks/useProgress';
+import { useAntiCheat } from '../hooks/useAntiCheat';
 import clsx from 'clsx';
 
 interface QuizProps {
@@ -18,6 +19,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, moduleId }) => {
   const [mcCorrect, setMcCorrect] = useState(0);
   const [mcTotal, setMcTotal] = useState(0);
   const { attempts } = useQuizAttempts(moduleId);
+  const { setActiveQuestion, recordKeystroke, getAntiCheatData, showTabWarning } = useAntiCheat();
 
   if (!questions || questions.length === 0) {
     return (
@@ -31,11 +33,14 @@ export const Quiz: React.FC<QuizProps> = ({ questions, moduleId }) => {
 
   const handleOptionSelect = (questionId: number, option: string) => {
     if (isSubmitted) return;
+    setActiveQuestion(String(questionId));
     setAnswers(prev => ({ ...prev, [questionId]: option }));
   };
 
   const handleTextChange = (questionId: number, text: string) => {
     if (isSubmitted) return;
+    setActiveQuestion(String(questionId));
+    recordKeystroke(String(questionId));
     setAnswers(prev => ({ ...prev, [questionId]: text }));
   };
 
@@ -58,11 +63,13 @@ export const Quiz: React.FC<QuizProps> = ({ questions, moduleId }) => {
     setIsSubmitted(true);
 
     try {
+      const antiCheatData = getAntiCheatData();
       await api('/api/progress/quiz-submit', {
         method: 'POST',
         body: JSON.stringify({
           moduleId,
           answers: JSON.stringify(answers),
+          antiCheatData,
         }),
       });
     } catch {}
@@ -78,6 +85,21 @@ export const Quiz: React.FC<QuizProps> = ({ questions, moduleId }) => {
 
   return (
     <div className="space-y-6">
+      {/* Tab Switch Warning */}
+      {showTabWarning && !isSubmitted && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3"
+        >
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Perpindahan tab terdeteksi</p>
+            <p className="text-xs text-amber-600 mt-0.5">Aktivitas ini dicatat dan akan dilaporkan ke dosen.</p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Previous Attempts */}
       {attempts.length > 0 && !isSubmitted && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">

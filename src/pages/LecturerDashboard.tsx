@@ -57,7 +57,7 @@ interface LoginSession {
 type SortKey = 'student_id' | 'last_login' | 'modules_visited' | 'avg_score';
 type SortDir = 'asc' | 'desc';
 
-type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face';
+type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face' | 'audit' | 'fraud';
 
 interface FaceStatusRow {
   student_id: string;

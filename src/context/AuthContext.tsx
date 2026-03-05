@@ -49,7 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (id: string, photo: string, faceAttempt?: number, skipFaceVerify?: boolean) => {
     const courseId = (localStorage.getItem('selected_course') ?? 'infosec') as CourseId;
-    const data = await api<{ token: string; user: User }>('/api/auth/student-login', {
+    const data = await api<{ token: string; session_id?: string; user: User }>('/api/auth/student-login', {
       method: 'POST',
       body: JSON.stringify({
         studentId: id,
@@ -60,17 +60,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }),
     });
     setToken(data.token);
-    setUser(data.user);
+    const userData = { ...data.user, session_id: data.session_id };
+    if (data.session_id) {
+      sessionStorage.setItem('session_id', data.session_id);
+    }
+    setUser(userData);
     navigate('/');
   };
 
   const lecturerLogin = async (username: string, password: string) => {
-    const data = await api<{ token: string; must_change_password?: boolean; user: User }>('/api/auth/lecturer-login', {
+    const data = await api<{ token: string; session_id?: string; must_change_password?: boolean; user: User }>('/api/auth/lecturer-login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     });
     setToken(data.token);
-    const userData = { ...data.user, must_change_password: data.must_change_password };
+    const userData = { ...data.user, must_change_password: data.must_change_password, session_id: data.session_id };
+    if (data.session_id) {
+      sessionStorage.setItem('session_id', data.session_id);
+    }
     setUser(userData);
     navigate('/lecturer');
   };
