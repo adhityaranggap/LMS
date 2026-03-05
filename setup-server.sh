@@ -56,8 +56,8 @@ JWT_SECRET=\${JWT_SECRET}
 LECTURER_DEFAULT_PASSWORD=${LECTURER_PASS}
 GROQ_API_KEY=${GROQ_API_KEY}
 PHOTO_ENCRYPTION_KEY=\${PHOTO_KEY}
-ALLOWED_ORIGIN=http://${SERVER_HOST}
-SERVER_PORT=3001
+ALLOWED_ORIGIN=https://biu.lingkunganplus.com
+SERVER_PORT=8007
 NODE_ENV=production
 EOF
 
@@ -75,6 +75,7 @@ REMOTE
 
 echo ""
 echo "=== Done! Now add these GitHub Secrets ==="
-echo "  SERVER_HOST = $SERVER_HOST"
-echo "  SERVER_USER = root"
+echo "  SERVER_HOST    = $SERVER_HOST"
+echo "  SERVER_USER    = root"
 echo "  SSH_PRIVATE_KEY = (your private SSH key, e.g. cat ~/.ssh/id_rsa)"
+echo "  GEMINI_API_KEY = (your Gemini API key)"

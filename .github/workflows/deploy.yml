@@ -21,7 +21,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Type check
         run: npm run lint
@@ -30,12 +30,13 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           REPO: ${{ github.repository }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          timeout: 300s
-          envs: REPO
+          timeout: 600s
+          envs: REPO,GEMINI_API_KEY
           script: |
             set -e
 
@@ -63,16 +64,28 @@ jobs:
             # Ensure data directory exists (SQLite persistence)
             mkdir -p data
 
+            # Export GEMINI_API_KEY for docker build arg
+            export GEMINI_API_KEY="$GEMINI_API_KEY"
+
             # Build and restart containers
             echo ">> Building Docker images..."
             docker compose -f docker-compose.prod.yml build --no-cache
 
             echo ">> Starting services..."
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
-            # Wait and show status
+            # Poll until app is healthy (max 90s)
             echo ">> Waiting for app to be healthy..."
-            sleep 15
+            for i in $(seq 1 18); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' biulms 2>/dev/null || echo "starting")
+              echo "   Health: $STATUS (attempt $i/18)"
+              if [ "$STATUS" = "healthy" ]; then
+                break
+              fi
+              sleep 5
+            done
+
+            echo ">> Service status:"
             docker compose -f docker-compose.prod.yml ps
 
-            echo ">> Deployment complete! App: http://103.105.79.91"
+            echo ">> Deployment complete! https://biu.lingkunganplus.com"

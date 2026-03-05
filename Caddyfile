@@ -1,0 +1,3 @@
+biu.lingkunganplus.com {
+    reverse_proxy app:8007
+}
