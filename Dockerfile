@@ -12,9 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Skip postinstall (setup-tfjs-shim.js uses require() but package.json is "type":"module")
-# Create the tfjs-node shim manually instead
+# Install deps, skip only the postinstall tfjs shim (uses require() in ESM package)
+# Then rebuild native modules (better-sqlite3, canvas) with build tools
 RUN npm ci --ignore-scripts && \
+    npm rebuild better-sqlite3 canvas && \
     mkdir -p node_modules/@tensorflow/tfjs-node && \
     printf '{"name":"@tensorflow/tfjs-node","version":"0.0.0-shim","main":"index.js"}' \
       > node_modules/@tensorflow/tfjs-node/package.json && \
@@ -39,16 +40,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package.json package-lock.json ./
+# Copy package.json for module resolution
+COPY package.json ./
 
-# Skip postinstall, create tfjs-node shim manually
-RUN npm ci --ignore-scripts && \
-    mkdir -p node_modules/@tensorflow/tfjs-node && \
-    printf '{"name":"@tensorflow/tfjs-node","version":"0.0.0-shim","main":"index.js"}' \
-      > node_modules/@tensorflow/tfjs-node/package.json && \
-    printf 'module.exports = require("@tensorflow/tfjs");\n' \
-      > node_modules/@tensorflow/tfjs-node/index.js
+# Copy pre-compiled node_modules from builder (native .node files already compiled for linux/x64)
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
