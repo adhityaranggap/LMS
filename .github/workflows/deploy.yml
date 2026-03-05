@@ -1,0 +1,78 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REPO: ${{ github.repository }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 300s
+          envs: REPO
+          script: |
+            set -e
+
+            APP_DIR="/root/biulms"
+
+            # Clone repo if not exists, else pull latest
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo ">> Cloning repository..."
+              git clone "https://github.com/${REPO}.git" "$APP_DIR"
+            else
+              echo ">> Pulling latest code..."
+              cd "$APP_DIR"
+              git fetch origin
+              git reset --hard origin/main
+            fi
+
+            cd "$APP_DIR"
+
+            # .env.local must exist on server (created once via setup script)
+            if [ ! -f ".env.local" ]; then
+              echo "ERROR: .env.local not found! Run setup-server.sh first."
+              exit 1
+            fi
+
+            # Ensure data directory exists (SQLite persistence)
+            mkdir -p data
+
+            # Build and restart containers
+            echo ">> Building Docker images..."
+            docker compose -f docker-compose.prod.yml build --no-cache
+
+            echo ">> Starting services..."
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Wait and show status
+            echo ">> Waiting for app to be healthy..."
+            sleep 15
+            docker compose -f docker-compose.prod.yml ps
+
+            echo ">> Deployment complete! App: http://103.105.79.91"

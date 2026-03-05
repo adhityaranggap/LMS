@@ -1,7 +1,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const DB_PATH = path.join(process.cwd(), 'data.db');
+// In production Docker: use /data volume for persistence
+// In development: use project root
+const DB_PATH = process.env.NODE_ENV === 'production'
+  ? '/data/data.db'
+  : path.join(process.cwd(), 'data.db');
 
 const db = new Database(DB_PATH);
 
