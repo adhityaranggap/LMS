@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import db from '../db';
-import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
+import { authMiddleware, lecturerOnly, requirePermission, AuthenticatedRequest, hashPassword } from '../auth';
 import { safeDecrypt } from '../crypto';
 import { logAudit } from '../services/audit.service';
 
@@ -661,6 +661,171 @@ router.get('/enhanced-stats', (_req: AuthenticatedRequest, res: Response): void 
     });
   } catch (error) {
     console.error('Enhanced stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Lecturer Account Management ---
+
+const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,50}$/;
+
+function isPasswordComplex(password: string): boolean {
+  if (password.length < 14) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  if (!/[^a-zA-Z0-9]/.test(password)) return false;
+  return true;
+}
+
+// GET /api/lecturer/accounts — list all lecturers
+router.get('/accounts', requirePermission('manage_lecturers'), (req: AuthenticatedRequest, res: Response): void => {
+  try {
+    const rows = db.prepare(`
+      SELECT id, username, display_name, password_changed_at, created_at
+      FROM lecturers ORDER BY created_at ASC
+    `).all() as { id: number; username: string; display_name: string; password_changed_at: string | null; created_at: string }[];
+
+    res.json({ lecturers: rows });
+  } catch (error) {
+    console.error('List lecturers error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/lecturer/accounts — create a new lecturer
+router.post('/accounts', requirePermission('manage_lecturers'), (req: AuthenticatedRequest, res: Response): void => {
+  const username = sanitizeString(req.body.username, 50);
+  const displayName = sanitizeString(req.body.display_name, 100);
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+
+  if (!username || !USERNAME_REGEX.test(username)) {
+    res.status(400).json({ error: 'Username must be 3-50 alphanumeric characters, hyphens, or underscores.' });
+    return;
+  }
+  if (!displayName) {
+    res.status(400).json({ error: 'Display name is required.' });
+    return;
+  }
+  if (!isPasswordComplex(password)) {
+    res.status(400).json({ error: 'Password must be at least 14 characters with uppercase, lowercase, a number, and a special character.' });
+    return;
+  }
+
+  try {
+    const existing = db.prepare('SELECT id FROM lecturers WHERE username = ?').get(username);
+    if (existing) {
+      res.status(409).json({ error: 'Username already taken.' });
+      return;
+    }
+
+    const { hash, salt } = hashPassword(password);
+    const result = db.prepare(
+      'INSERT INTO lecturers (username, password_hash, salt, display_name) VALUES (?, ?, ?, ?)'
+    ).run(username, hash, salt, displayName) as { lastInsertRowid: number };
+
+    // Assign lecturer role
+    const lecturerRole = db.prepare("SELECT id FROM roles WHERE name = 'lecturer'").get() as { id: number } | undefined;
+    if (lecturerRole) {
+      db.prepare('INSERT OR IGNORE INTO user_roles (user_id, user_type, role_id, tenant_id) VALUES (?, ?, ?, 1)')
+        .run(String(result.lastInsertRowid), 'lecturer', lecturerRole.id);
+    }
+
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'create_lecturer',
+      resource_type: 'lecturer',
+      resource_id: String(result.lastInsertRowid),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
+    res.status(201).json({ success: true, id: result.lastInsertRowid, username, display_name: displayName });
+  } catch (error) {
+    console.error('Create lecturer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/lecturer/accounts/:id — remove a lecturer (cannot delete self)
+router.delete('/accounts/:id', requirePermission('manage_lecturers'), (req: AuthenticatedRequest, res: Response): void => {
+  const targetId = Number(req.params.id);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    res.status(400).json({ error: 'Invalid lecturer ID.' });
+    return;
+  }
+  if (String(targetId) === req.user!.id) {
+    res.status(400).json({ error: 'Cannot delete your own account.' });
+    return;
+  }
+
+  try {
+    const existing = db.prepare('SELECT id, username FROM lecturers WHERE id = ?').get(targetId) as { id: number; username: string } | undefined;
+    if (!existing) {
+      res.status(404).json({ error: 'Lecturer not found.' });
+      return;
+    }
+
+    db.prepare('DELETE FROM user_roles WHERE user_id = ? AND user_type = ?').run(String(targetId), 'lecturer');
+    db.prepare('DELETE FROM lecturers WHERE id = ?').run(targetId);
+
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'delete_lecturer',
+      resource_type: 'lecturer',
+      resource_id: String(targetId),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete lecturer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/lecturer/accounts/:id/reset-password — admin resets another lecturer's password
+router.post('/accounts/:id/reset-password', requirePermission('manage_lecturers'), (req: AuthenticatedRequest, res: Response): void => {
+  const targetId = Number(req.params.id);
+  if (!Number.isInteger(targetId) || targetId <= 0) {
+    res.status(400).json({ error: 'Invalid lecturer ID.' });
+    return;
+  }
+
+  const newPassword = typeof req.body.new_password === 'string' ? req.body.new_password : '';
+  if (!isPasswordComplex(newPassword)) {
+    res.status(400).json({ error: 'Password must be at least 14 characters with uppercase, lowercase, a number, and a special character.' });
+    return;
+  }
+
+  try {
+    const existing = db.prepare('SELECT id FROM lecturers WHERE id = ?').get(targetId);
+    if (!existing) {
+      res.status(404).json({ error: 'Lecturer not found.' });
+      return;
+    }
+
+    const { hash, salt } = hashPassword(newPassword);
+    // Set password_changed_at to NULL so they're forced to change on next login
+    db.prepare("UPDATE lecturers SET password_hash = ?, salt = ?, password_changed_at = NULL WHERE id = ?")
+      .run(hash, salt, targetId);
+
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'reset_lecturer_password',
+      resource_type: 'lecturer',
+      resource_id: String(targetId),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Reset lecturer password error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

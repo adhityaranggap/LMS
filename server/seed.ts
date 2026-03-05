@@ -41,11 +41,12 @@ export function seedRolesAndPermissions(): void {
     { name: 'view_analytics', description: 'View analytics and statistics' },
     { name: 'view_fraud_indicators', description: 'View fraud flags and indicators' },
     { name: 'export_data', description: 'Export data as CSV' },
+    { name: 'manage_lecturers', description: 'Create and manage lecturer accounts' },
   ];
 
   const rolePermissionMap: Record<string, string[]> = {
     student: [],
-    lecturer: ['view_students', 'grade_essays', 'manage_content', 'view_audit_logs', 'manage_enrollment', 'view_analytics', 'view_fraud_indicators', 'export_data'],
+    lecturer: ['view_students', 'grade_essays', 'manage_content', 'view_audit_logs', 'manage_enrollment', 'view_analytics', 'view_fraud_indicators', 'export_data', 'manage_lecturers'],
     tenant_admin: ['view_students', 'grade_essays', 'manage_content', 'view_audit_logs', 'manage_enrollment', 'manage_roles', 'view_analytics', 'view_fraud_indicators', 'export_data'],
     super_admin: ['view_students', 'grade_essays', 'manage_content', 'view_audit_logs', 'manage_enrollment', 'manage_tenants', 'manage_roles', 'view_analytics', 'view_fraud_indicators', 'export_data'],
   };

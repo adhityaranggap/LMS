@@ -301,6 +301,17 @@ function migrateIfNeeded() {
       "INSERT OR IGNORE INTO tenants (id, name, slug) VALUES (1, 'Universitas Bina Insani', 'bina-insani')"
     ).run();
   }
+
+  // Add manage_lecturers permission and assign to lecturer role
+  const managePermExists = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;
+  if (!managePermExists) {
+    db.prepare("INSERT INTO permissions (name, description) VALUES ('manage_lecturers', 'Create and manage lecturer accounts')").run();
+    const perm = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;
+    const lecturerRole = db.prepare("SELECT id FROM roles WHERE name = 'lecturer'").get() as { id: number } | undefined;
+    if (perm && lecturerRole) {
+      db.prepare('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)').run(lecturerRole.id, perm.id);
+    }
+  }
 }
 
 try {
