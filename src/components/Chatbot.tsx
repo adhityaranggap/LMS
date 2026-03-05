@@ -421,7 +421,7 @@ export const Chatbot: React.FC = () => {
                 <Bot className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold text-sm">AI InfoSec Assistant</p>
+                <p className="text-white font-semibold text-sm">Lecturer Assistant</p>
                 <p className="text-indigo-200 text-xs">Universitas Bina Insani</p>
               </div>
               <div className="flex items-center gap-1">
