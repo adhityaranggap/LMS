@@ -54,7 +54,7 @@ function progressRateLimit(req: Request, res: Response, next: NextFunction): voi
 
 // --- Input Validation Helpers ---
 
-const VALID_TABS = ['theory', 'lab', 'case', 'quiz', 'videos'] as const;
+const VALID_TABS = ['theory', 'lab', 'case', 'quiz', 'videos', 'interactive'] as const;
 const MAX_STRING_LENGTH = 10000;
 
 function validateModuleId(moduleId: unknown, course?: string): number | null {
