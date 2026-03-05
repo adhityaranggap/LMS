@@ -302,6 +302,30 @@ function migrateIfNeeded() {
     ).run();
   }
 
+  // Add tokens_invalidated_at to lecturers for session invalidation on password change
+  const lecturerCols2 = db.pragma('table_info(lecturers)') as { name: string }[];
+  if (!lecturerCols2.find(c => c.name === 'tokens_invalidated_at')) {
+    db.exec('ALTER TABLE lecturers ADD COLUMN tokens_invalidated_at TEXT');
+  }
+
+  // Rate limits table for persistent rate limiting & account lockout
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      reset_at TEXT NOT NULL
+    )
+  `);
+
+  // Account lockout table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_lockouts (
+      username TEXT PRIMARY KEY,
+      failures INTEGER NOT NULL DEFAULT 0,
+      locked_until TEXT
+    )
+  `);
+
   // Add manage_lecturers permission and assign to lecturer role
   const managePermExists = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;
   if (!managePermExists) {

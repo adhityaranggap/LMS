@@ -10,6 +10,7 @@ import { useLabSteps, useCaseSubmission, recordVisit } from '../hooks/useProgres
 import { useModuleContent } from '../hooks/useModuleContent';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
+import { useAntiCheat } from '../hooks/useAntiCheat';
 import clsx from 'clsx';
 import { useChatbot } from '../context/ChatbotContext';
 
@@ -18,6 +19,7 @@ export const ModuleDetail = () => {
   const { module, loading } = useModuleContent(Number(id));
   const { openChat } = useChatbot();
   const { course } = useAuth();
+  const { getAntiCheatData: getCaseAntiCheatData } = useAntiCheat();
   const isCrypto = course === 'crypto';
   const [activeTab, setActiveTab] = useState<'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive'>('theory');
   const [labSubmitted, setLabSubmitted] = useState(false);
@@ -106,9 +108,10 @@ export const ModuleDetail = () => {
   const handleCaseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const antiCheatData = getCaseAntiCheatData();
       await api('/api/progress/case-submit', {
         method: 'POST',
-        body: JSON.stringify({ moduleId: module.id, answers: JSON.stringify(caseAnswers) }),
+        body: JSON.stringify({ moduleId: module.id, answers: JSON.stringify(caseAnswers), antiCheatData }),
       });
     } catch {}
   };

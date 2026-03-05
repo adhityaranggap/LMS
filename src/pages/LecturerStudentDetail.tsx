@@ -17,6 +17,9 @@ import {
   Clock,
   Save,
   Loader2,
+  AlertTriangle,
+  Shield,
+  Monitor,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -84,6 +87,27 @@ interface StudentDetailResponse {
   quizAttempts: QuizAttempt[];
 }
 
+interface FraudFlag {
+  id: number;
+  flag_type: string;
+  severity: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  details: string | null;
+  is_reviewed: number;
+  created_at: string;
+}
+
+interface DeviceSession {
+  session_id: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  screen_width: number | null;
+  screen_height: number | null;
+  platform: string | null;
+  created_at: string;
+}
+
 // --- Helpers ---
 
 function formatDate(iso: string | null): string {
@@ -125,6 +149,8 @@ export const LecturerStudentDetail: React.FC = () => {
   >({});
   const [savingEssay, setSavingEssay] = useState<string | null>(null);
   const [savedEssay, setSavedEssay] = useState<Set<string>>(new Set());
+  const [fraudFlags, setFraudFlags] = useState<FraudFlag[]>([]);
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
 
   // --- Fetch data ---
 
@@ -150,6 +176,14 @@ export const LecturerStudentDetail: React.FC = () => {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+
+    // Fetch fraud flags and device sessions
+    api<{ flags: FraudFlag[] }>(`/api/lecturer/students/${studentId}/fraud-flags`)
+      .then((res) => setFraudFlags(res.flags))
+      .catch(() => {});
+    api<{ sessions: DeviceSession[] }>(`/api/lecturer/students/${studentId}/sessions`)
+      .then((res) => setDeviceSessions(res.sessions))
+      .catch(() => {});
   }, [studentId]);
 
   // --- Essay grading handlers ---
@@ -293,6 +327,77 @@ export const LecturerStudentDetail: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Fraud Flags */}
+        {fraudFlags.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              Indikator Kecurangan ({fraudFlags.length})
+            </h2>
+            <div className="space-y-2">
+              {fraudFlags.map((flag) => (
+                <div key={flag.id} className={clsx(
+                  "flex items-start gap-3 p-3 rounded-xl border text-sm",
+                  flag.severity === 'critical' ? 'bg-red-50 border-red-200' :
+                  flag.severity === 'high' ? 'bg-orange-50 border-orange-200' :
+                  flag.severity === 'medium' ? 'bg-amber-50 border-amber-200' :
+                  'bg-slate-50 border-slate-200'
+                )}>
+                  <Shield className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-400" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-700">{flag.flag_type.replace(/_/g, ' ')}</span>
+                      <span className={clsx(
+                        "text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase",
+                        flag.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                        flag.severity === 'high' ? 'bg-orange-100 text-orange-700' :
+                        flag.severity === 'medium' ? 'bg-amber-100 text-amber-700' :
+                        'bg-slate-100 text-slate-600'
+                      )}>{flag.severity}</span>
+                      {flag.is_reviewed ? (
+                        <span className="text-[10px] text-emerald-600 font-medium">Reviewed</span>
+                      ) : null}
+                    </div>
+                    {flag.details && (
+                      <p className="text-xs text-slate-500 mt-1">{flag.details}</p>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(flag.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Device & Session Info */}
+        {deviceSessions.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Monitor className="w-4 h-4 text-blue-500" />
+              Informasi Perangkat & Sesi ({deviceSessions.length})
+            </h2>
+            <div className="space-y-2">
+              {deviceSessions.slice(0, 10).map((session, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                      {session.ip_address && <span>IP: <strong>{session.ip_address}</strong></span>}
+                      {session.platform && <span>Platform: <strong>{session.platform}</strong></span>}
+                      {session.screen_width && session.screen_height && (
+                        <span>Screen: <strong>{session.screen_width}x{session.screen_height}</strong></span>
+                      )}
+                    </div>
+                    {session.user_agent && (
+                      <p className="text-[10px] text-slate-400 mt-1 truncate">{session.user_agent}</p>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(session.created_at)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Per-Module Accordion */}
         <div className="space-y-3">

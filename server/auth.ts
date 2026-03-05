@@ -174,6 +174,24 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
   (req as any)._tenantId = payload.tenant_id ?? 1;
   (req as any)._isSuperAdmin = payload.role === 'super_admin';
 
+  // Check if token was issued before a password change (session invalidation)
+  if (payload.role !== 'student') {
+    try {
+      const lecturer = db.prepare('SELECT tokens_invalidated_at FROM lecturers WHERE id = ?').get(Number(payload.id)) as { tokens_invalidated_at: string | null } | undefined;
+      if (lecturer?.tokens_invalidated_at) {
+        const invalidatedAt = new Date(lecturer.tokens_invalidated_at).getTime();
+        // Token was issued before invalidation (exp - 24h = issue time approximately)
+        const tokenIssuedAt = payload.exp - 24 * 60 * 60 * 1000;
+        if (tokenIssuedAt < invalidatedAt) {
+          res.status(401).json({ error: 'Session invalidated. Please log in again.' });
+          return;
+        }
+      }
+    } catch {
+      // Column may not exist yet
+    }
+  }
+
   // Load permissions from user_roles + role_permissions
   let permissions: string[] = [];
   try {
@@ -185,8 +203,8 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
       WHERE ur.user_id = ? AND ur.user_type = ?
     `).all(payload.id, userType) as { name: string }[];
     permissions = perms.map(p => p.name);
-  } catch {
-    // Tables may not exist yet during initial migration
+  } catch (err) {
+    console.warn('[auth] Failed to load permissions for user', payload.id, ':', err);
   }
 
   req.user = {

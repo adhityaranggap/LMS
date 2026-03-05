@@ -51,8 +51,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// --- Body parser with 10MB limit (for face registration with 3 photos) ---
-app.use(express.json({ limit: '10mb' }));
+// --- Body parser: 1MB default, 10MB for face routes (base64 photos) ---
+app.use('/api/face', express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 // --- Security headers middleware ---
 app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -66,13 +67,11 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// --- Mount face routes BEFORE CSRF (pre-login endpoints) ---
-app.use('/api/face', faceRoutes);
-
 // --- CSRF protection on state-changing requests ---
 app.use('/api', csrfProtection);
 
 // --- Mount routes ---
+app.use('/api/face', faceRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/lecturer', lecturerRoutes);

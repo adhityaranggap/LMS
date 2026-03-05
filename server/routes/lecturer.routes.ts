@@ -3,12 +3,14 @@ import db from '../db';
 import { authMiddleware, lecturerOnly, requirePermission, AuthenticatedRequest, hashPassword } from '../auth';
 import { safeDecrypt } from '../crypto';
 import { logAudit } from '../services/audit.service';
+import { tenantScope } from '../middleware/tenant';
 
 const router = Router();
 
-// Apply auth + lecturer-only middleware to all routes
+// Apply auth + lecturer-only + tenant scoping middleware to all routes
 router.use(authMiddleware);
 router.use(lecturerOnly);
+router.use(tenantScope);
 
 // --- Input Validation Helpers ---
 
@@ -27,10 +29,22 @@ function sanitizeString(input: unknown, maxLength: number = 10000): string | nul
   return trimmed;
 }
 
+// CSV formula injection prevention: prefix dangerous chars and quote fields
+function escapeCsvField(value: string): string {
+  // Escape double quotes by doubling them
+  let escaped = value.replace(/"/g, '""');
+  // Prefix characters that can trigger formula execution in spreadsheets
+  if (/^[=+\-@\t\r]/.test(escaped)) {
+    escaped = "'" + escaped;
+  }
+  return `"${escaped}"`;
+}
+
 // --- Routes ---
 
 // GET /api/lecturer/students
-router.get('/students', (_req: AuthenticatedRequest, res: Response): void => {
+router.get('/students', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const students = db.prepare(`
       SELECT
@@ -42,9 +56,10 @@ router.get('/students', (_req: AuthenticatedRequest, res: Response): void => {
         (SELECT COUNT(*) FROM quiz_attempts qa WHERE qa.student_id = s.student_id) as quiz_attempts,
         (SELECT ROUND(AVG(qa2.score), 1) FROM quiz_attempts qa2 WHERE qa2.student_id = s.student_id AND qa2.score IS NOT NULL) as avg_score
       FROM students s
+      WHERE s.tenant_id = ?
       ORDER BY s.created_at DESC
       LIMIT 500
-    `).all() as {
+    `).all(tenantId) as {
       student_id: string;
       photo: string | null;
       created_at: string;
@@ -75,10 +90,11 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
     return;
   }
 
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const student = db.prepare(
-      'SELECT student_id, photo, created_at FROM students WHERE student_id = ?'
-    ).get(studentId) as { student_id: string; photo: string | null; created_at: string } | undefined;
+      'SELECT student_id, photo, created_at FROM students WHERE student_id = ? AND tenant_id = ?'
+    ).get(studentId, tenantId) as { student_id: string; photo: string | null; created_at: string } | undefined;
 
     if (!student) {
       res.status(404).json({ error: 'Student not found.' });
@@ -223,13 +239,14 @@ router.get('/modules/stats', (req: AuthenticatedRequest, res: Response): void =>
 router.get('/login-history', (req: AuthenticatedRequest, res: Response): void => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
   const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const tenantId = (req as any).tenantId ?? 1;
 
   try {
     const logins = db.prepare(
-      'SELECT ls.id, ls.student_id, ls.photo, ls.login_time FROM login_sessions ls ORDER BY ls.login_time DESC LIMIT ? OFFSET ?'
-    ).all(limit, offset) as { id: number; student_id: string; photo: string | null; login_time: string }[];
+      'SELECT ls.id, ls.student_id, ls.photo, ls.login_time FROM login_sessions ls INNER JOIN students s ON s.student_id = ls.student_id WHERE s.tenant_id = ? ORDER BY ls.login_time DESC LIMIT ? OFFSET ?'
+    ).all(tenantId, limit, offset) as { id: number; student_id: string; photo: string | null; login_time: string }[];
 
-    const total = db.prepare('SELECT COUNT(*) as count FROM login_sessions').get() as { count: number };
+    const total = db.prepare('SELECT COUNT(*) as count FROM login_sessions ls INNER JOIN students s ON s.student_id = ls.student_id WHERE s.tenant_id = ?').get(tenantId) as { count: number };
 
     const decryptedLogins = logins.map(l => ({ ...l, photo: safeDecrypt(l.photo) }));
     res.json({ logins: decryptedLogins, total: total.count });
@@ -292,39 +309,42 @@ router.post('/grade-essay', (req: AuthenticatedRequest, res: Response): void => 
 });
 
 // GET /api/lecturer/dashboard-stats
-router.get('/dashboard-stats', (_req: AuthenticatedRequest, res: Response): void => {
+router.get('/dashboard-stats', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
-    const totalStudents = db.prepare('SELECT COUNT(*) as count FROM students').get() as { count: number };
+    const totalStudents = db.prepare('SELECT COUNT(*) as count FROM students WHERE tenant_id = ?').get(tenantId) as { count: number };
 
     const activeToday = db.prepare(
-      "SELECT COUNT(DISTINCT student_id) as count FROM login_sessions WHERE date(login_time) = date('now')"
-    ).get() as { count: number };
+      "SELECT COUNT(DISTINCT ls.student_id) as count FROM login_sessions ls INNER JOIN students s ON s.student_id = ls.student_id WHERE s.tenant_id = ? AND date(ls.login_time) = date('now')"
+    ).get(tenantId) as { count: number };
 
     const avgScores = db.prepare(
-      'SELECT ROUND(AVG(score), 1) as avg FROM quiz_attempts WHERE score IS NOT NULL'
-    ).get() as { avg: number | null };
+      'SELECT ROUND(AVG(qa.score), 1) as avg FROM quiz_attempts qa INNER JOIN students s ON s.student_id = qa.student_id WHERE s.tenant_id = ? AND qa.score IS NOT NULL'
+    ).get(tenantId) as { avg: number | null };
 
     const totalQuizAttempts = db.prepare(
-      'SELECT COUNT(*) as count FROM quiz_attempts'
-    ).get() as { count: number };
+      'SELECT COUNT(*) as count FROM quiz_attempts qa INNER JOIN students s ON s.student_id = qa.student_id WHERE s.tenant_id = ?'
+    ).get(tenantId) as { count: number };
 
     const totalLabSubmissions = db.prepare(
-      'SELECT COUNT(*) as count FROM lab_submissions'
-    ).get() as { count: number };
+      'SELECT COUNT(*) as count FROM lab_submissions lb INNER JOIN students s ON s.student_id = lb.student_id WHERE s.tenant_id = ?'
+    ).get(tenantId) as { count: number };
 
     const totalCaseSubmissions = db.prepare(
-      'SELECT COUNT(*) as count FROM case_study_submissions'
-    ).get() as { count: number };
+      'SELECT COUNT(*) as count FROM case_study_submissions cs INNER JOIN students s ON s.student_id = cs.student_id WHERE s.tenant_id = ?'
+    ).get(tenantId) as { count: number };
 
     const ungradedEssays = db.prepare(`
       SELECT COUNT(*) as count FROM quiz_attempts qa
-      WHERE qa.id NOT IN (
+      INNER JOIN students s ON s.student_id = qa.student_id
+      WHERE s.tenant_id = ?
+      AND qa.id NOT IN (
         SELECT DISTINCT quiz_attempt_id FROM essay_grades
       )
       AND qa.mc_total < (
         SELECT COUNT(*) FROM json_each(qa.answers)
       )
-    `).get() as { count: number };
+    `).get(tenantId) as { count: number };
 
     res.json({
       totalStudents: totalStudents.count,
@@ -342,7 +362,8 @@ router.get('/dashboard-stats', (_req: AuthenticatedRequest, res: Response): void
 });
 
 // GET /api/lecturer/face-status
-router.get('/face-status', (_req: AuthenticatedRequest, res: Response): void => {
+router.get('/face-status', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const students = db.prepare(`
       SELECT
@@ -352,9 +373,10 @@ router.get('/face-status', (_req: AuthenticatedRequest, res: Response): void => 
         (SELECT MAX(fd.created_at) FROM face_descriptors fd WHERE fd.student_id = s.student_id) as face_registered_at,
         (SELECT COUNT(*) FROM face_descriptors fd2 WHERE fd2.student_id = s.student_id) as descriptor_count
       FROM students s
+      WHERE s.tenant_id = ?
       ORDER BY s.created_at DESC
       LIMIT 500
-    `).all() as {
+    `).all(tenantId) as {
       student_id: string;
       is_face_registered: number;
       created_at: string;
@@ -577,6 +599,7 @@ router.get('/submissions/:type/:id/validation', (req: AuthenticatedRequest, res:
 
 // GET /api/lecturer/export/students?format=csv
 router.get('/export/students', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const students = db.prepare(`
       SELECT
@@ -588,13 +611,14 @@ router.get('/export/students', (req: AuthenticatedRequest, res: Response): void 
         (SELECT COUNT(*) FROM quiz_attempts qa WHERE qa.student_id = s.student_id) as quiz_attempts,
         (SELECT ROUND(AVG(qa2.score), 1) FROM quiz_attempts qa2 WHERE qa2.student_id = s.student_id AND qa2.score IS NOT NULL) as avg_score
       FROM students s
+      WHERE s.tenant_id = ?
       ORDER BY s.created_at DESC
-    `).all() as Record<string, unknown>[];
+    `).all(tenantId) as Record<string, unknown>[];
 
     const headers = ['student_id', 'created_at', 'is_enrolled', 'last_login', 'modules_visited', 'quiz_attempts', 'avg_score'];
     const csvRows = [headers.join(',')];
     for (const row of students) {
-      csvRows.push(headers.map(h => String(row[h] ?? '')).join(','));
+      csvRows.push(headers.map(h => escapeCsvField(String(row[h] ?? ''))).join(','));
     }
 
     res.setHeader('Content-Type', 'text/csv');
@@ -610,10 +634,11 @@ router.get('/export/students', (req: AuthenticatedRequest, res: Response): void 
 router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): void => {
   const dateFrom = typeof req.query.from === 'string' ? req.query.from : null;
   const dateTo = typeof req.query.to === 'string' ? req.query.to : null;
+  const tenantId = (req as any).tenantId ?? 1;
 
   try {
-    let where = 'WHERE 1=1';
-    const params: unknown[] = [];
+    let where = 'WHERE tenant_id = ?';
+    const params: unknown[] = [tenantId];
 
     if (dateFrom) { where += ' AND created_at >= ?'; params.push(dateFrom); }
     if (dateTo) { where += ' AND created_at <= ?'; params.push(dateTo); }
@@ -627,7 +652,7 @@ router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): voi
     const headers = ['id', 'user_id', 'user_type', 'action', 'resource_type', 'resource_id', 'ip_address', 'created_at'];
     const csvRows = [headers.join(',')];
     for (const row of logs) {
-      csvRows.push(headers.map(h => String(row[h] ?? '')).join(','));
+      csvRows.push(headers.map(h => escapeCsvField(String(row[h] ?? ''))).join(','));
     }
 
     res.setHeader('Content-Type', 'text/csv');
@@ -640,19 +665,20 @@ router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): voi
 });
 
 // Enhanced dashboard-stats — add fraud/validation counts
-router.get('/enhanced-stats', (_req: AuthenticatedRequest, res: Response): void => {
+router.get('/enhanced-stats', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const unreviewedFraudFlags = db.prepare(
-      'SELECT COUNT(*) as count FROM fraud_flags WHERE is_reviewed = 0'
-    ).get() as { count: number };
+      'SELECT COUNT(*) as count FROM fraud_flags WHERE is_reviewed = 0 AND tenant_id = ?'
+    ).get(tenantId) as { count: number };
 
     const highSeverityFlags = db.prepare(
-      "SELECT COUNT(*) as count FROM fraud_flags WHERE is_reviewed = 0 AND severity IN ('high', 'critical')"
-    ).get() as { count: number };
+      "SELECT COUNT(*) as count FROM fraud_flags WHERE is_reviewed = 0 AND severity IN ('high', 'critical') AND tenant_id = ?"
+    ).get(tenantId) as { count: number };
 
     const pendingAIValidations = db.prepare(
-      'SELECT COUNT(*) as count FROM ai_validations WHERE ai_detection_score > 0.7'
-    ).get() as { count: number };
+      'SELECT COUNT(*) as count FROM ai_validations WHERE ai_detection_score > 0.7 AND tenant_id = ?'
+    ).get(tenantId) as { count: number };
 
     res.json({
       unreviewedFraudFlags: unreviewedFraudFlags.count,

@@ -25,8 +25,8 @@ export function setCsrfCookie(res: Response): void {
  * Validates that X-CSRF-Token header matches csrf_token cookie
  * on state-changing methods (POST, PUT, DELETE, PATCH).
  */
-// Paths exempt from CSRF — pre-login public endpoints
-const CSRF_EXEMPT_PREFIXES = ['/api/face/'];
+// Paths exempt from CSRF — pre-login public endpoints that need to work without a session
+const CSRF_EXEMPT_PREFIXES = ['/api/auth/student-login', '/api/auth/lecturer-login', '/api/auth/csrf'];
 
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
   const safeMethod = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
@@ -35,7 +35,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  // Skip CSRF for pre-login face endpoints (no session cookie available yet)
+  // Skip CSRF for login endpoints (no session cookie available yet)
   if (CSRF_EXEMPT_PREFIXES.some(prefix => req.path.startsWith(prefix))) {
     next();
     return;

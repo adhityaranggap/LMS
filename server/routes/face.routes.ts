@@ -29,11 +29,17 @@ function faceErrorMessage(code: string): string {
   }
 }
 
-// GET /api/face/status/:studentId
-router.get('/status/:studentId', (req: Request, res: Response): void => {
+// GET /api/face/status/:studentId — requires auth to prevent enumeration
+router.get('/status/:studentId', authMiddleware, (req: AuthenticatedRequest, res: Response): void => {
   const { studentId } = req.params;
   if (!STUDENT_ID_REGEX.test(studentId)) {
     res.status(400).json({ error: 'Invalid student ID format.' });
+    return;
+  }
+
+  // Students can only check their own status; lecturers can check any
+  if (req.user!.role === 'student' && req.user!.id !== studentId) {
+    res.status(403).json({ error: 'Access denied.' });
     return;
   }
 
@@ -52,8 +58,8 @@ router.get('/status/:studentId', (req: Request, res: Response): void => {
   }
 });
 
-// POST /api/face/register
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
+// POST /api/face/register — requires auth so only the authenticated student can register their own face
+router.post('/register', authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   if (!isModelReady()) {
     res.status(503).json({ error: faceErrorMessage('MODEL_NOT_READY') });
     return;
@@ -63,6 +69,12 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
   if (!studentId || !STUDENT_ID_REGEX.test(studentId)) {
     res.status(400).json({ error: 'Invalid student ID format.' });
+    return;
+  }
+
+  // Students can only register their own face; lecturers can register for any student
+  if (req.user!.role === 'student' && req.user!.id !== studentId) {
+    res.status(403).json({ error: 'Access denied. You can only register your own face.' });
     return;
   }
 
@@ -131,8 +143,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST /api/face/verify
-router.post('/verify', async (req: Request, res: Response): Promise<void> => {
+// POST /api/face/verify — requires auth
+router.post('/verify', authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   if (!isModelReady()) {
     res.status(503).json({ error: faceErrorMessage('MODEL_NOT_READY') });
     return;
@@ -142,6 +154,12 @@ router.post('/verify', async (req: Request, res: Response): Promise<void> => {
 
   if (!studentId || !STUDENT_ID_REGEX.test(studentId)) {
     res.status(400).json({ error: 'Invalid student ID format.' });
+    return;
+  }
+
+  // Students can only verify their own face
+  if (req.user!.role === 'student' && req.user!.id !== studentId) {
+    res.status(403).json({ error: 'Access denied.' });
     return;
   }
 

@@ -1,13 +1,14 @@
 import { Router, Response } from 'express';
 import db from '../db';
-import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
+import { authMiddleware, lecturerOnly, requirePermission, AuthenticatedRequest } from '../auth';
 
 const router = Router();
 
 router.use(authMiddleware);
 router.use(lecturerOnly);
+router.use(requirePermission('manage_tenants'));
 
-// GET /api/tenants — list all tenants (super_admin)
+// GET /api/tenants — list all tenants (requires manage_tenants permission)
 router.get('/', (req: AuthenticatedRequest, res: Response): void => {
   try {
     const tenants = db.prepare('SELECT id, name, slug, logo_url, config, is_active, created_at FROM tenants ORDER BY id').all();

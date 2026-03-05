@@ -88,39 +88,32 @@ function clearAuthCookie(res: Response): void {
   });
 }
 
-// --- Rate Limiting ---
+// --- Persistent Rate Limiting (SQLite-backed) ---
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-const rateLimitMap = new Map<string, RateLimitEntry>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX = 10;
 
-// Cleanup stale entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitMap) {
-    if (entry.resetAt <= now) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
-
 function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
+  const now = new Date().toISOString();
+  const entry = db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').get(key) as { count: number; reset_at: string } | undefined;
 
-  if (!entry || entry.resetAt <= now) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+  if (!entry || new Date(entry.reset_at).getTime() <= Date.now()) {
+    const resetAt = new Date(Date.now() + RATE_LIMIT_WINDOW_MS).toISOString();
+    db.prepare('INSERT OR REPLACE INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?)').run(key, resetAt);
     return true;
   }
 
-  entry.count++;
-  return entry.count <= RATE_LIMIT_MAX;
+  const newCount = entry.count + 1;
+  db.prepare('UPDATE rate_limits SET count = ? WHERE key = ?').run(newCount, key);
+  return newCount <= RATE_LIMIT_MAX;
 }
+
+// Cleanup expired rate limits periodically
+setInterval(() => {
+  try {
+    db.prepare("DELETE FROM rate_limits WHERE reset_at < datetime('now')").run();
+  } catch {}
+}, 5 * 60 * 1000);
 
 // --- Input Validation ---
 
@@ -135,37 +128,29 @@ function sanitizeString(input: unknown, maxLength: number = MAX_STRING_LENGTH): 
   return trimmed;
 }
 
-// --- Account Lockout ---
+// --- Persistent Account Lockout (SQLite-backed) ---
 
-interface LockoutEntry {
-  failures: number;
-  lockedUntil: number;
-}
-
-const lockoutMap = new Map<string, LockoutEntry>();
 const MAX_FAILURES = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 function isAccountLocked(username: string): boolean {
-  const entry = lockoutMap.get(username);
-  if (!entry) return false;
-  if (entry.lockedUntil > Date.now()) return true;
+  const entry = db.prepare('SELECT failures, locked_until FROM account_lockouts WHERE username = ?').get(username) as { failures: number; locked_until: string | null } | undefined;
+  if (!entry || !entry.locked_until) return false;
+  if (new Date(entry.locked_until).getTime() > Date.now()) return true;
   // Lockout expired, reset
-  lockoutMap.delete(username);
+  db.prepare('DELETE FROM account_lockouts WHERE username = ?').run(username);
   return false;
 }
 
 function recordFailedLogin(username: string): void {
-  const entry = lockoutMap.get(username) || { failures: 0, lockedUntil: 0 };
-  entry.failures++;
-  if (entry.failures >= MAX_FAILURES) {
-    entry.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-  }
-  lockoutMap.set(username, entry);
+  const entry = db.prepare('SELECT failures FROM account_lockouts WHERE username = ?').get(username) as { failures: number } | undefined;
+  const newFailures = (entry?.failures ?? 0) + 1;
+  const lockedUntil = newFailures >= MAX_FAILURES ? new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString() : null;
+  db.prepare('INSERT OR REPLACE INTO account_lockouts (username, failures, locked_until) VALUES (?, ?, ?)').run(username, newFailures, lockedUntil);
 }
 
 function resetFailedLogins(username: string): void {
-  lockoutMap.delete(username);
+  db.prepare('DELETE FROM account_lockouts WHERE username = ?').run(username);
 }
 
 // --- Routes ---
@@ -375,7 +360,9 @@ router.post('/lecturer-login', (req: Request, res: Response): void => {
         WHERE ur.user_id = ? AND ur.user_type = 'lecturer'
       `).all(String(lecturer.id)) as { name: string }[];
       permissions = perms.map(p => p.name);
-    } catch {}
+    } catch (err) {
+      console.warn('[auth] Failed to load permissions:', err);
+    }
 
     const sessionId = crypto.randomBytes(16).toString('hex');
     const token = generateToken(String(lecturer.id), 'lecturer');
@@ -514,10 +501,25 @@ router.post('/change-password', authMiddleware, (req: AuthenticatedRequest, res:
     }
 
     const { hash, salt } = hashPassword(newPassword);
-    db.prepare('UPDATE lecturers SET password_hash = ?, salt = ?, password_changed_at = datetime(\'now\') WHERE id = ?')
+    db.prepare('UPDATE lecturers SET password_hash = ?, salt = ?, password_changed_at = datetime(\'now\'), tokens_invalidated_at = datetime(\'now\') WHERE id = ?')
       .run(hash, salt, Number(req.user.id));
 
-    res.json({ success: true });
+    // Revoke the current token so user must re-login with new password
+    const rawToken = (req as any)._rawToken;
+    if (rawToken) {
+      const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      revokeToken(rawToken, expiry);
+    }
+
+    // Clear auth cookie
+    res.clearCookie(AUTH_COOKIE_NAME, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    });
+
+    res.json({ success: true, session_invalidated: true });
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Internal server error' });
