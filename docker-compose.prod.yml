@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        GEMINI_API_KEY: ${GEMINI_API_KEY}
+        GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     container_name: biulms
     restart: unless-stopped
     env_file:
@@ -13,10 +13,11 @@ services:
       - NODE_ENV=production
       - SERVER_PORT=8007
       - ALLOWED_ORIGIN=https://biu.lingkunganplus.com
+    ports:
+      - "8007:8007"
     volumes:
       - ./data:/data
-    networks:
-      - biulms-net
+    network_mode: bridge
     healthcheck:
       test: ["CMD", "node", "-e",
         "require('http').get('http://localhost:8007/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
@@ -24,28 +25,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: biulms-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - biulms-net
-    depends_on:
-      - app
-
-networks:
-  biulms-net:
-    driver: bridge
-
-volumes:
-  caddy_data:
-  caddy_config:
