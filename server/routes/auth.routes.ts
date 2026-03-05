@@ -22,11 +22,19 @@ import crypto from 'crypto';
 const router = Router();
 
 // --- Password complexity ---
+const WEAK_PASSWORDS = new Set([
+  'password', 'password1', 'password123', 'admin', 'admin123', 'admin1234',
+  'lecturer123', 'dosen123', 'biulms123', 'qwerty123', 'Welcome1',
+  '12345678901234', 'Abcdefgh1234!', 'P@ssword123456',
+]);
+
 function isPasswordComplex(password: string): boolean {
-  if (password.length < 12) return false;
+  if (password.length < 14) return false;
   if (!/[a-z]/.test(password)) return false;
   if (!/[A-Z]/.test(password)) return false;
   if (!/[0-9]/.test(password)) return false;
+  if (!/[^a-zA-Z0-9]/.test(password)) return false; // require special character
+  if (WEAK_PASSWORDS.has(password.toLowerCase())) return false;
   return true;
 }
 
@@ -491,7 +499,7 @@ router.post('/change-password', authMiddleware, (req: AuthenticatedRequest, res:
   }
 
   if (!isPasswordComplex(newPassword)) {
-    res.status(400).json({ error: 'New password must be at least 12 characters with uppercase, lowercase, and a number.' });
+    res.status(400).json({ error: 'New password must be at least 14 characters with uppercase, lowercase, a number, and a special character.' });
     return;
   }
 

@@ -14,6 +14,9 @@ function getJwtSecret(): string {
 }
 
 // --- Password hashing with scrypt ---
+// OWASP recommended: N>=32768, r=8, p=1; maxmem must be set explicitly (default 32MB is too tight)
+const SCRYPT_PARAMS = { N: 32768, r: 8, p: 1, maxmem: 67108864 }; // 64MB
+const SCRYPT_KEYLEN = 64;
 
 export interface HashedPassword {
   hash: string;
@@ -22,13 +25,18 @@ export interface HashedPassword {
 
 export function hashPassword(password: string): HashedPassword {
   const salt = crypto.randomBytes(32).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, SCRYPT_PARAMS).toString('hex');
   return { hash, salt };
 }
 
 export function verifyPassword(password: string, storedHash: string, storedSalt: string): boolean {
-  const hash = crypto.scryptSync(password, storedSalt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(storedHash, 'hex'));
+  // Try current params first, fall back to old default params (N=16384) for migration
+  const hash = crypto.scryptSync(password, storedSalt, SCRYPT_KEYLEN, SCRYPT_PARAMS).toString('hex');
+  if (crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(storedHash, 'hex'))) return true;
+
+  // Fallback: verify with old default params and silently accept (user should change password)
+  const hashLegacy = crypto.scryptSync(password, storedSalt, SCRYPT_KEYLEN).toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hashLegacy, 'hex'), Buffer.from(storedHash, 'hex'));
 }
 
 // --- Token generation/verification using HMAC ---
