@@ -28,8 +28,20 @@ import {
   Check,
   ScanFace,
   AlertTriangle,
+  FileSearch,
+  ShieldAlert,
 } from 'lucide-react';
+import { AuditLogViewer } from '../components/AuditLogViewer';
+import { FraudDashboard } from '../components/FraudDashboard';
+import { usePermission } from '../hooks/usePermission';
 import clsx from 'clsx';
+
+const AccessDenied = () => (
+  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+    <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+    <p className="text-sm font-medium text-amber-800">Anda tidak memiliki akses ke fitur ini.</p>
+  </div>
+);
 
 // --- Types ---
 
@@ -108,6 +120,14 @@ function progressPercent(visited: number, total: number): number {
 export const LecturerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // --- RBAC permissions ---
+  const canViewStudents    = usePermission('view_students');
+  const canManageContent   = usePermission('manage_content');
+  const canManageEnrollment = usePermission('manage_enrollment');
+  const canViewAuditLogs   = usePermission('view_audit_logs');
+  const canViewFraud       = usePermission('view_fraud_indicators');
+  const canExportData      = usePermission('export_data');
 
   const activeTab = (searchParams.get('tab') as SidebarTab) || 'dashboard';
   const setActiveTab = (tab: SidebarTab) => {
@@ -229,13 +249,16 @@ export const LecturerDashboard: React.FC = () => {
 
   // --- Sidebar nav items ---
 
-  const navItems: { key: SidebarTab; label: string; icon: React.ElementType }[] = [
-    { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { key: 'students', label: 'Students', icon: Users },
-    { key: 'history', label: 'Login History', icon: History },
-    { key: 'content', label: 'Edit Materi', icon: BookOpen },
-    { key: 'face', label: 'Face Recognition', icon: ScanFace },
-  ];
+  const navItems = ([
+    { key: 'dashboard', label: 'Dashboard',       icon: LayoutDashboard, allowed: true },
+    { key: 'students',  label: 'Students',         icon: Users,           allowed: canViewStudents },
+    { key: 'history',   label: 'Login History',    icon: History,         allowed: canViewStudents },
+    { key: 'content',   label: 'Edit Materi',      icon: BookOpen,        allowed: canManageContent },
+    { key: 'face',      label: 'Face Recognition', icon: ScanFace,        allowed: canManageEnrollment },
+    { key: 'audit',     label: 'Audit Log',        icon: FileSearch,      allowed: canViewAuditLogs },
+    { key: 'fraud',     label: 'Fraud Detection',  icon: ShieldAlert,     allowed: canViewFraud },
+  ] as { key: SidebarTab; label: string; icon: React.ElementType; allowed: boolean }[])
+    .filter(item => item.allowed);
 
   // --- Stat cards config ---
 
@@ -652,7 +675,7 @@ export const LecturerDashboard: React.FC = () => {
           )}
 
           {/* Students Tab */}
-          {activeTab === 'students' && (
+          {activeTab === 'students' && (!canViewStudents ? <AccessDenied /> : (
             <>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">All Students</h1>
@@ -747,10 +770,10 @@ export const LecturerDashboard: React.FC = () => {
                 )}
               </div>
             </>
-          )}
+          ))}
 
           {/* Edit Materi Tab */}
-          {activeTab === 'content' && (
+          {activeTab === 'content' && (!canManageContent ? <AccessDenied /> : (
             <>
               <div className="flex items-center justify-between">
                 <div>
@@ -1309,10 +1332,10 @@ export const LecturerDashboard: React.FC = () => {
                 </div>
               </div>
             </>
-          )}
+          ))}
 
           {/* Face Recognition Tab */}
-          {activeTab === 'face' && (
+          {activeTab === 'face' && (!canManageEnrollment ? <AccessDenied /> : (
             <>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Face Recognition</h1>
@@ -1426,10 +1449,10 @@ export const LecturerDashboard: React.FC = () => {
                 )}
               </div>
             </>
-          )}
+          ))}
 
           {/* Login History Tab */}
-          {activeTab === 'history' && (
+          {activeTab === 'history' && (!canViewStudents ? <AccessDenied /> : (
             <>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">Login History</h1>
@@ -1474,6 +1497,17 @@ export const LecturerDashboard: React.FC = () => {
                 )}
               </div>
             </>
+          ))}
+          {activeTab === 'audit' && (
+            canViewAuditLogs
+              ? <AuditLogViewer />
+              : <AccessDenied />
+          )}
+
+          {activeTab === 'fraud' && (
+            canViewFraud
+              ? <FraudDashboard />
+              : <AccessDenied />
           )}
         </div>
       </main>
