@@ -9,14 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files + postinstall script for layer caching
+# Copy package files
 COPY package.json package-lock.json ./
-COPY scripts/ ./scripts/
 
-# Install all dependencies (including devDependencies for build)
-RUN npm ci
+# Skip postinstall (setup-tfjs-shim.js uses require() but package.json is "type":"module")
+# Create the tfjs-node shim manually instead
+RUN npm ci --ignore-scripts && \
+    mkdir -p node_modules/@tensorflow/tfjs-node && \
+    printf '{"name":"@tensorflow/tfjs-node","version":"0.0.0-shim","main":"index.js"}' \
+      > node_modules/@tensorflow/tfjs-node/package.json && \
+    printf 'module.exports = require("@tensorflow/tfjs");\n' \
+      > node_modules/@tensorflow/tfjs-node/index.js
 
-# Copy remaining source
+# Copy source
 COPY . .
 
 # Build frontend (produces dist/)
@@ -34,12 +39,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files + postinstall script
+# Copy package files
 COPY package.json package-lock.json ./
-COPY scripts/ ./scripts/
 
-# Install all dependencies (tsx needed to run server)
-RUN npm ci
+# Skip postinstall, create tfjs-node shim manually
+RUN npm ci --ignore-scripts && \
+    mkdir -p node_modules/@tensorflow/tfjs-node && \
+    printf '{"name":"@tensorflow/tfjs-node","version":"0.0.0-shim","main":"index.js"}' \
+      > node_modules/@tensorflow/tfjs-node/package.json && \
+    printf 'module.exports = require("@tensorflow/tfjs");\n' \
+      > node_modules/@tensorflow/tfjs-node/index.js
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
@@ -48,6 +57,7 @@ COPY --from=builder /app/dist ./dist
 COPY server.ts ./
 COPY server/ ./server/
 COPY tsconfig.json ./
+COPY scripts/ ./scripts/
 
 # Data directory for SQLite (will be mounted as volume)
 RUN mkdir -p /data
