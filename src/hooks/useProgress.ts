@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 
 interface ModuleSummary {
   moduleId: number;
@@ -12,10 +13,16 @@ interface ModuleSummary {
 }
 
 export function useProgressSummary() {
+  const { user } = useAuth();
   const [summary, setSummary] = useState<ModuleSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
+    // Only students have progress data; skip for lecturers/admins
+    if (!user || user.role !== 'student') {
+      setLoading(false);
+      return;
+    }
     api<{ summary: Record<string, any> }>('/api/progress/summary')
       .then(data => {
         const modules: ModuleSummary[] = Object.entries(data.summary).map(([key, val]) => ({
@@ -31,7 +38,7 @@ export function useProgressSummary() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
