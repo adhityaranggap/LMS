@@ -59,12 +59,6 @@ export const Login = () => {
     setError('');
     const status = await checkFaceStatus(studentId.trim());
 
-    if (!status.enrolled && !status.registered) {
-      // Not in system at all — will be blocked at login, show early
-      setError('NIM tidak terdaftar. Hubungi dosen untuk pendaftaran.');
-      return;
-    }
-
     setFaceRegistered(status.registered);
 
     if (!status.registered) {
