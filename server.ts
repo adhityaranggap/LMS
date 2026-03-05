@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
+import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import db from './server/db';
 import authRoutes from './server/routes/auth.routes';
@@ -85,10 +86,20 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// --- 404 handler ---
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Not found' });
-});
+// --- Serve React frontend in production ---
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  // React Router fallback: serve index.html for all non-API routes
+  app.get('*', (_req: Request, res: Response) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  // --- 404 handler (dev only) ---
+  app.use((_req: Request, res: Response) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 // --- Global error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
