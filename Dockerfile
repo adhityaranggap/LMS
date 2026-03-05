@@ -60,8 +60,8 @@ COPY scripts/ ./scripts/
 RUN mkdir -p /data
 
 ENV NODE_ENV=production
-ENV SERVER_PORT=3001
+ENV SERVER_PORT=8007
 
-EXPOSE 3001
+EXPOSE 8007
 
 CMD ["npx", "tsx", "server.ts"]
