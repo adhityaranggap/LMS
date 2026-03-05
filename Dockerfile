@@ -12,15 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install deps, skip only the postinstall tfjs shim (uses require() in ESM package)
-# Then rebuild native modules (better-sqlite3, canvas) with build tools
+# Install deps without postinstall scripts, then rebuild native modules
+# and download the real @tensorflow/tfjs-node pre-built binary
 RUN npm ci --ignore-scripts && \
     npm rebuild better-sqlite3 canvas && \
-    mkdir -p node_modules/@tensorflow/tfjs-node && \
-    printf '{"name":"@tensorflow/tfjs-node","version":"0.0.0-shim","main":"index.js"}' \
-      > node_modules/@tensorflow/tfjs-node/package.json && \
-    printf 'module.exports = require("@tensorflow/tfjs");\n' \
-      > node_modules/@tensorflow/tfjs-node/index.js
+    npm rebuild @tensorflow/tfjs-node
 
 # Copy source
 COPY . .
@@ -35,9 +31,10 @@ FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
-# Install runtime system dependencies (canvas, sqlite3 native libs)
+# Install runtime system dependencies (canvas, sqlite3 native libs, libtensorflow)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
+    libstdc++6 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package.json for module resolution
