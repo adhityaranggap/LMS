@@ -77,6 +77,14 @@ export const AuditLogViewer: React.FC = () => {
     tab_hidden: 'bg-amber-100 text-amber-700',
     tab_visible: 'bg-amber-50 text-amber-600',
     fraud_flag_review: 'bg-red-100 text-red-700',
+    grade_essay: 'bg-teal-100 text-teal-700',
+    face_reset: 'bg-orange-100 text-orange-700',
+    export_students: 'bg-violet-100 text-violet-700',
+    export_audit_logs: 'bg-violet-100 text-violet-700',
+    chatbot_query: 'bg-cyan-100 text-cyan-700',
+    view_student: 'bg-indigo-100 text-indigo-600',
+    view_student_sessions: 'bg-indigo-100 text-indigo-600',
+    view_student_fraud_flags: 'bg-indigo-100 text-indigo-600',
   };
 
   return (

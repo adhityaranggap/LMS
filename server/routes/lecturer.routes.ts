@@ -165,6 +165,17 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
       photo: safeDecrypt(l.photo),
     }));
 
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'view_student',
+      resource_type: 'student',
+      resource_id: studentId,
+      details: JSON.stringify({ studentId }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
     res.json({
       student: decryptedStudent,
       logins: decryptedLogins,
@@ -301,6 +312,17 @@ router.post('/grade-essay', (req: AuthenticatedRequest, res: Response): void => 
         graded_at = datetime('now')
     `).run(quizAttemptId, questionId, grade, feedback, gradedBy);
 
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'grade_essay',
+      resource_type: 'quiz_attempt',
+      resource_id: String(quizAttemptId),
+      details: JSON.stringify({ quizAttemptId, questionId, grade }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Grade essay error:', error);
@@ -432,6 +454,17 @@ router.post('/face-reset/:studentId', (req: AuthenticatedRequest, res: Response)
     });
     transaction();
 
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'face_reset',
+      resource_type: 'student',
+      resource_id: studentId,
+      details: JSON.stringify({ studentId }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Face reset error:', error);
@@ -533,6 +566,17 @@ router.get('/students/:studentId/fraud-flags', (req: AuthenticatedRequest, res: 
       ORDER BY created_at DESC LIMIT 100
     `).all(studentId);
 
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'view_student_fraud_flags',
+      resource_type: 'student',
+      resource_id: studentId,
+      details: JSON.stringify({ studentId }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
     res.json({ flags });
   } catch (error) {
     console.error('Student fraud flags error:', error);
@@ -556,6 +600,17 @@ router.get('/students/:studentId/sessions', (req: AuthenticatedRequest, res: Res
       WHERE ls.student_id = ?
       ORDER BY ls.login_time DESC LIMIT 50
     `).all(studentId);
+
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'view_student_sessions',
+      resource_type: 'student',
+      resource_id: studentId,
+      details: JSON.stringify({ studentId }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
 
     res.json({ sessions });
   } catch (error) {
@@ -621,6 +676,16 @@ router.get('/export/students', (req: AuthenticatedRequest, res: Response): void 
       csvRows.push(headers.map(h => escapeCsvField(String(row[h] ?? ''))).join(','));
     }
 
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'export_students',
+      resource_type: 'export',
+      details: JSON.stringify({ tenant_id: tenantId, count: students.length }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="students_export.csv"');
     res.send(csvRows.join('\n'));
@@ -654,6 +719,16 @@ router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): voi
     for (const row of logs) {
       csvRows.push(headers.map(h => escapeCsvField(String(row[h] ?? ''))).join(','));
     }
+
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'export_audit_logs',
+      resource_type: 'export',
+      details: JSON.stringify({ dateFrom, dateTo, count: logs.length }),
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="audit_logs_export.csv"');
