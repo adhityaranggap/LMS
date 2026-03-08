@@ -45,11 +45,20 @@ export async function api<T = unknown>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(path, {
-    ...options,
-    headers,
-    credentials: 'include', // Send cookies (httpOnly auth_token + csrf_token)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...options,
+      headers,
+      credentials: 'include', // Send cookies (httpOnly auth_token + csrf_token)
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (res.status === 401) {
     clearToken();
@@ -63,4 +72,25 @@ export async function api<T = unknown>(
   }
 
   return res.json() as Promise<T>;
+}
+
+// Simple in-memory cache for GET requests
+const apiCache = new Map<string, { data: unknown; exp: number }>();
+
+export async function cachedApi<T = unknown>(url: string, ttl = 30000): Promise<T> {
+  const cached = apiCache.get(url);
+  if (cached && cached.exp > Date.now()) return cached.data as T;
+  const data = await api<T>(url);
+  apiCache.set(url, { data, exp: Date.now() + ttl });
+  return data;
+}
+
+export function invalidateCache(urlPattern?: string): void {
+  if (!urlPattern) {
+    apiCache.clear();
+    return;
+  }
+  for (const key of apiCache.keys()) {
+    if (key.includes(urlPattern)) apiCache.delete(key);
+  }
 }

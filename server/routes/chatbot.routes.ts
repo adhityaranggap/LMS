@@ -197,7 +197,12 @@ router.post('/query', (req: AuthenticatedRequest, res: Response): void => {
         return;
       }
       const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content ?? '(Tidak ada respons)';
+      const reply = data?.choices?.[0]?.message?.content;
+      if (typeof reply !== 'string') {
+        console.error('[chatbot] Unexpected Groq response structure:', JSON.stringify(data).slice(0, 200));
+        res.status(502).json({ error: 'Chatbot service error.' });
+        return;
+      }
 
       const lastUserMsg = [...messages].reverse().find((m: { role: string; content: string }) => m.role === 'user');
       logAudit({

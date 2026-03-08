@@ -13,6 +13,7 @@ import { api } from '../lib/api';
 import { useAntiCheat } from '../hooks/useAntiCheat';
 import clsx from 'clsx';
 import { useChatbot } from '../context/ChatbotContext';
+import { Discussion } from '../components/Discussion';
 
 export const ModuleDetail = () => {
   const { id } = useParams();
@@ -21,16 +22,42 @@ export const ModuleDetail = () => {
   const { course } = useAuth();
   const { getAntiCheatData: getCaseAntiCheatData } = useAntiCheat();
   const isCrypto = course === 'crypto';
-  const [activeTab, setActiveTab] = useState<'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive'>('theory');
+  const [activeTab, setActiveTab] = useState<'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive' | 'discussion'>('theory');
   const [labSubmitted, setLabSubmitted] = useState(false);
   const [labFileName, setLabFileName] = useState('');
   const [labNotes, setLabNotes] = useState('');
   const [caseAnswers, setCaseAnswers] = useState<Record<number, string>>({});
+  const [draftRestored, setDraftRestored] = useState(false);
   const prevTab = useRef(activeTab);
 
   const moduleId = Number(id) || 0;
   const { completedSteps, toggleStep } = useLabSteps(moduleId);
   const { submission: caseSubmission } = useCaseSubmission(moduleId);
+
+  // Auto-save case study drafts
+  const DRAFT_KEY = `draft_case_${moduleId}`;
+  useEffect(() => {
+    if (Object.keys(caseAnswers).length === 0 || caseSubmission) return;
+    const interval = setInterval(() => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(caseAnswers));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [caseAnswers, DRAFT_KEY, caseSubmission]);
+
+  // Restore draft on mount
+  useEffect(() => {
+    if (caseSubmission || draftRestored) return;
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Object.keys(parsed).length > 0) {
+          setCaseAnswers(parsed);
+          setDraftRestored(true);
+        }
+      } catch {}
+    }
+  }, [DRAFT_KEY, caseSubmission, draftRestored]);
 
   useEffect(() => {
     if (module && prevTab.current !== activeTab) {
@@ -84,7 +111,7 @@ export const ModuleDetail = () => {
 
   const cryptoHasInteractive = isCrypto && Number(id) !== 101;
 
-  type TabId = 'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive';
+  type TabId = 'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive' | 'discussion';
   const tabs: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'theory', label: 'Teori', icon: BookOpen },
     { id: 'lab', label: 'Lab Exercise', icon: Terminal },
@@ -92,6 +119,7 @@ export const ModuleDetail = () => {
     { id: 'quiz', label: 'Quiz', icon: HelpCircle },
     ...(cryptoHasInteractive ? [{ id: 'interactive' as TabId, label: 'Interaktif', icon: Cpu }] : []),
     { id: 'videos', label: 'Videos', icon: Play },
+    { id: 'discussion', label: 'Diskusi', icon: MessageCircle },
   ];
 
   const handleLabSubmit = async (e: React.FormEvent) => {
@@ -113,6 +141,7 @@ export const ModuleDetail = () => {
         method: 'POST',
         body: JSON.stringify({ moduleId: module.id, answers: JSON.stringify(caseAnswers), antiCheatData }),
       });
+      localStorage.removeItem(DRAFT_KEY);
     } catch {}
   };
 
@@ -139,6 +168,7 @@ export const ModuleDetail = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
               className={clsx(
                 "flex items-center gap-2 px-4 py-3 rounded-t-xl text-sm font-medium transition-all relative top-px",
                 activeTab === tab.id
@@ -430,6 +460,10 @@ export const ModuleDetail = () => {
 
         {activeTab === 'videos' && (
           <VideoSection videos={module.videoResources} />
+        )}
+
+        {activeTab === 'discussion' && (
+          <Discussion moduleId={module.id} />
         )}
       </motion.div>
     </div>

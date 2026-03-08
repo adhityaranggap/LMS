@@ -8,6 +8,7 @@ import {
   FACE_WARN_THRESHOLD,
 } from '../services/face.service';
 import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
+import { encryptData, safeDecrypt } from '../crypto';
 
 const router = Router();
 
@@ -144,7 +145,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
     const transaction = db.transaction(() => {
       for (const d of descriptors) {
-        insertStmt.run(studentId, JSON.stringify(d.descriptor), d.pose);
+        insertStmt.run(studentId, encryptData(JSON.stringify(d.descriptor)), d.pose);
       }
       db.prepare('UPDATE students SET is_face_registered = 1 WHERE student_id = ?').run(studentId);
     });
@@ -196,7 +197,10 @@ router.post('/verify', authMiddleware, async (req: AuthenticatedRequest, res: Re
       return;
     }
 
-    const storedDescriptors = rows.map((r) => JSON.parse(r.descriptor) as number[]);
+    const storedDescriptors = rows.map((r) => {
+      const decrypted = safeDecrypt(r.descriptor);
+      return JSON.parse(decrypted ?? r.descriptor) as number[];
+    });
 
     // Extract query descriptor
     let queryDescriptor: number[];

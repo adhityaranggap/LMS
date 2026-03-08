@@ -26,17 +26,34 @@ jobs:
       - name: Type check
         run: npm run lint
 
-      - name: Deploy to server via SSH
+      - name: Run tests
+        run: npm test
+
+      - name: Backup database before deploy
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          REPO: ${{ github.repository }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          timeout: 600s
-          envs: REPO,GEMINI_API_KEY
+          timeout: 60s
+          script: |
+            APP_DIR="/root/biulms"
+            mkdir -p "$APP_DIR/data/backups"
+            if [ -f "$APP_DIR/data/data.db" ]; then
+              cp "$APP_DIR/data/data.db" "$APP_DIR/data/backups/pre-deploy-$(date +%Y%m%d-%H%M%S).db"
+              echo ">> Database backup created"
+            fi
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          REPO: ${{ github.repository }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 300s
+          envs: REPO
           script: |
             set -e
 
@@ -64,9 +81,6 @@ jobs:
             # Ensure data directory exists (SQLite persistence)
             mkdir -p data
 
-            # Export GEMINI_API_KEY for docker build arg
-            export GEMINI_API_KEY="$GEMINI_API_KEY"
-
             # Build and restart containers
             echo ">> Building Docker images..."
             docker compose -f docker-compose.prod.yml build --no-cache
@@ -85,6 +99,14 @@ jobs:
               sleep 5
             done
 
+            # Check final health status
+            FINAL_STATUS=$(docker inspect --format='{{.State.Health.Status}}' biulms 2>/dev/null || echo "unknown")
+            if [ "$FINAL_STATUS" != "healthy" ]; then
+              echo "WARNING: App is not healthy after deploy! Status: $FINAL_STATUS"
+              echo ">> Container logs:"
+              docker logs biulms --tail 50
+            fi
+
             echo ">> Service status:"
             docker compose -f docker-compose.prod.yml ps
 
@@ -101,6 +123,27 @@ jobs:
               -p 80:80 -p 443:443 \
               -v /root/biulms/nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro \
               -v /etc/letsencrypt:/etc/letsencrypt:ro \
+              -v /var/www:/var/www:ro \
               nginx:alpine
 
             echo ">> Deployment complete! https://biu.lingkunganplus.com"
+
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 120s
+          script: |
+            echo ">> Deployment failed! Attempting rollback..."
+            cd /root/biulms
+            LATEST_BACKUP=$(ls -t data/backups/pre-deploy-*.db 2>/dev/null | head -1)
+            if [ -n "$LATEST_BACKUP" ]; then
+              echo ">> Restoring database from $LATEST_BACKUP"
+              cp "$LATEST_BACKUP" data/data.db
+            fi
+            git checkout HEAD~1
+            docker compose -f docker-compose.prod.yml up -d --build
+            echo ">> Rollback complete"

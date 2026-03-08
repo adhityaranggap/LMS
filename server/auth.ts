@@ -99,7 +99,9 @@ export function verifyToken(token: string): TokenPayload | null {
 
   // Verify signature
   const expectedSignature = createSignature(payloadBase64);
-  if (!crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expectedSignature, 'hex'))) {
+  const sigBuf = Buffer.from(signature, 'hex');
+  const expectedBuf = Buffer.from(expectedSignature, 'hex');
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
     return null;
   }
 
@@ -192,19 +194,22 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     }
   }
 
-  // Load permissions from user_roles + role_permissions
-  let permissions: string[] = [];
-  try {
-    const userType = payload.role === 'student' ? 'student' : 'lecturer';
-    const perms = db.prepare(`
-      SELECT DISTINCT p.name FROM permissions p
-      INNER JOIN role_permissions rp ON rp.permission_id = p.id
-      INNER JOIN user_roles ur ON ur.role_id = rp.role_id
-      WHERE ur.user_id = ? AND ur.user_type = ?
-    `).all(payload.id, userType) as { name: string }[];
-    permissions = perms.map(p => p.name);
-  } catch (err) {
-    console.warn('[auth] Failed to load permissions for user', payload.id, ':', err);
+  // Load permissions from cache or user_roles + role_permissions
+  const userType = payload.role === 'student' ? 'student' : 'lecturer';
+  let permissions: string[] = getCachedPermissions(payload.id, userType) ?? [];
+  if (permissions.length === 0) {
+    try {
+      const perms = db.prepare(`
+        SELECT DISTINCT p.name FROM permissions p
+        INNER JOIN role_permissions rp ON rp.permission_id = p.id
+        INNER JOIN user_roles ur ON ur.role_id = rp.role_id
+        WHERE ur.user_id = ? AND ur.user_type = ?
+      `).all(payload.id, userType) as { name: string }[];
+      permissions = perms.map(p => p.name);
+      setCachedPermissions(payload.id, userType, permissions);
+    } catch (err) {
+      console.warn('[auth] Failed to load permissions for user', payload.id, ':', err);
+    }
   }
 
   req.user = {
@@ -231,6 +236,26 @@ export function studentOnly(req: AuthenticatedRequest, res: Response, next: Next
     return;
   }
   next();
+}
+
+// Permission cache with 5-minute TTL
+const permCache = new Map<string, { perms: string[]; exp: number }>();
+const PERM_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export function clearPermissionCache(): void {
+  permCache.clear();
+}
+
+function getCachedPermissions(userId: string, userType: string): string[] | null {
+  const key = `${userId}:${userType}`;
+  const cached = permCache.get(key);
+  if (cached && cached.exp > Date.now()) return cached.perms;
+  if (cached) permCache.delete(key);
+  return null;
+}
+
+function setCachedPermissions(userId: string, userType: string, perms: string[]): void {
+  permCache.set(`${userId}:${userType}`, { perms, exp: Date.now() + PERM_CACHE_TTL_MS });
 }
 
 export function requirePermission(...requiredPermissions: string[]) {

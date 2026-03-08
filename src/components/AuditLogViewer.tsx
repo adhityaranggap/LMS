@@ -137,6 +137,7 @@ export const AuditLogViewer: React.FC = () => {
         ) : logs.length === 0 ? (
           <div className="p-8 text-center text-slate-400">Tidak ada log ditemukan</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -144,8 +145,8 @@ export const AuditLogViewer: React.FC = () => {
                 <th className="px-4 py-3 text-left font-medium text-slate-600">Waktu</th>
                 <th className="px-4 py-3 text-left font-medium text-slate-600">User</th>
                 <th className="px-4 py-3 text-left font-medium text-slate-600">Action</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-600">Resource</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-600">IP</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-600 hidden sm:table-cell">Resource</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-600 hidden sm:table-cell">IP</th>
               </tr>
             </thead>
             <tbody>
@@ -181,8 +182,8 @@ export const AuditLogViewer: React.FC = () => {
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{log.resource_type ? `${log.resource_type}/${log.resource_id || ''}` : '-'}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-400">{log.ip_address || '-'}</td>
+                    <td className="px-4 py-3 text-slate-500 hidden sm:table-cell">{log.resource_type ? `${log.resource_type}/${log.resource_id || ''}` : '-'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-400 hidden sm:table-cell">{log.ip_address || '-'}</td>
                   </tr>
                   {expandedId === log.id && (
                     <tr className="bg-slate-50">
@@ -204,6 +205,7 @@ export const AuditLogViewer: React.FC = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -216,6 +218,7 @@ export const AuditLogViewer: React.FC = () => {
               onClick={() => setPage(p => Math.max(0, p - 1))}
               disabled={page === 0}
               className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"
+              aria-label="Halaman sebelumnya"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -224,6 +227,7 @@ export const AuditLogViewer: React.FC = () => {
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={page >= totalPages - 1}
               className="p-1 rounded hover:bg-slate-100 disabled:opacity-30"
+              aria-label="Halaman berikutnya"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

@@ -12,20 +12,50 @@ import chatbotRoutes from './server/routes/chatbot.routes';
 import faceRoutes from './server/routes/face.routes';
 import auditRoutes from './server/routes/audit.routes';
 import tenantRoutes from './server/routes/tenant.routes';
+import deadlineRoutes from './server/routes/deadline.routes';
+import discussionRoutes from './server/routes/discussion.routes';
+import notificationRoutes from './server/routes/notification.routes';
 import { csrfProtection } from './server/middleware/csrf';
 import { seedDefaultLecturer, seedRolesAndPermissions } from './server/seed';
 import { cleanupRevokedTokens } from './server/auth';
 import { initFaceService } from './server/services/face.service';
 
 // --- Startup validation ---
-const jwtSecret = process.env.JWT_SECRET ?? '';
-const WEAK_SECRETS = ['dev-secret-change-in-production-use-a-long-random-string', 'change-me-to-a-random-secret-in-production', ''];
-if (process.env.NODE_ENV === 'production' && (WEAK_SECRETS.includes(jwtSecret) || jwtSecret.length < 32)) {
-  console.error('[FATAL] JWT_SECRET is too weak for production. Generate one with: openssl rand -hex 32');
+const REQUIRED_ENV = ['JWT_SECRET', 'PHOTO_ENCRYPTION_KEY', 'LECTURER_DEFAULT_PASSWORD'] as const;
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+
+const jwtSecret = process.env.JWT_SECRET!;
+const WEAK_SECRETS = ['dev-secret-change-in-production-use-a-long-random-string', 'change-me-to-a-random-secret-in-production'];
+if (WEAK_SECRETS.includes(jwtSecret)) {
+  console.error('[FATAL] JWT_SECRET is a known default. Generate one with: openssl rand -hex 32');
   process.exit(1);
 }
-if (!jwtSecret || jwtSecret.length < 16) {
-  console.warn('[WARN] JWT_SECRET is weak. Use at least 32 chars in production: openssl rand -hex 32');
+if (process.env.NODE_ENV === 'production' && jwtSecret.length < 64) {
+  console.error('[FATAL] JWT_SECRET must be at least 64 hex chars in production. Generate with: openssl rand -hex 32');
+  process.exit(1);
+}
+if (jwtSecret.length < 32) {
+  console.warn('[WARN] JWT_SECRET is short. Use at least 64 hex chars: openssl rand -hex 32');
+}
+
+const photoKey = process.env.PHOTO_ENCRYPTION_KEY!;
+if (!/^[0-9a-fA-F]+$/.test(photoKey)) {
+  console.error('[FATAL] PHOTO_ENCRYPTION_KEY must be valid hex. Generate with: openssl rand -hex 32');
+  process.exit(1);
+}
+if (process.env.NODE_ENV === 'production' && photoKey.length < 64) {
+  console.error('[FATAL] PHOTO_ENCRYPTION_KEY must be at least 64 hex chars. Generate with: openssl rand -hex 32');
+  process.exit(1);
+}
+
+const COMMON_PASSWORDS = ['admin123', 'password', '123456', 'admin', 'password123', 'letmein', 'qwerty'];
+if (COMMON_PASSWORDS.includes(process.env.LECTURER_DEFAULT_PASSWORD!)) {
+  console.warn('[WARN] LECTURER_DEFAULT_PASSWORD is a common password. Use a strong password in production.');
 }
 
 const app = express();
@@ -79,10 +109,24 @@ app.use('/api/content', contentRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/tenants', tenantRoutes);
+app.use('/api/deadlines', deadlineRoutes);
+app.use('/api/discussions', discussionRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // --- Health check ---
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({
+      status: 'healthy',
+      db: 'ok',
+      uptime: process.uptime(),
+      memory: process.memoryUsage().rss,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    res.status(503).json({ status: 'unhealthy', db: 'error' });
+  }
 });
 
 // --- Serve React frontend in production ---
@@ -155,3 +199,7 @@ function gracefulShutdown(signal: string) {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled rejection:', reason);
+});

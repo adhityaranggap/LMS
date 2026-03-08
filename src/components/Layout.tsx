@@ -10,6 +10,7 @@ import { COURSES } from '../data/courses';
 import { useProgressSummary } from '../hooks/useProgress';
 import { Chatbot } from './Chatbot';
 import { ChatbotProvider } from '../context/ChatbotContext';
+import { NotificationBell } from './NotificationBell';
 
 const cryptoIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Key,
@@ -40,9 +41,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <img src="/logo.png" alt="Bina Insani" className="h-7 w-auto object-contain" />
           <span>Bina Insani LMS</span>
         </div>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-          {isSidebarOpen ? <X /> : <Menu />}
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-label="Toggle menu"
+            aria-expanded={isSidebarOpen}
+          >
+            {isSidebarOpen ? <X /> : <Menu />}
+          </button>
+        </div>
       </div>
 
       {/* Sidebar */}
@@ -77,9 +85,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   {user.id.slice(0, 2).toUpperCase()}
                 </div>
               )}
-              <div className="overflow-hidden">
+              <div className="overflow-hidden flex-1">
                 <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Student ID</p>
                 <p className="text-sm font-bold text-slate-900 truncate">{user.id}</p>
+              </div>
+              <div className="hidden md:block">
+                <NotificationBell />
               </div>
             </div>
           </div>

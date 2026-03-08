@@ -247,6 +247,47 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ai_validations_submission ON ai_validations(submission_type, submission_id);
   CREATE INDEX IF NOT EXISTS idx_ai_validations_student ON ai_validations(student_id);
 
+  -- Deadlines
+  CREATE TABLE IF NOT EXISTS deadlines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    module_id INTEGER NOT NULL,
+    assessment_type TEXT CHECK(assessment_type IN ('quiz','case','lab')) NOT NULL,
+    due_at TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(tenant_id, module_id, assessment_type)
+  );
+
+  -- Notifications
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    user_id TEXT NOT NULL,
+    user_type TEXT NOT NULL DEFAULT 'lecturer',
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    is_read INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, user_type, is_read);
+
+  -- Discussions
+  CREATE TABLE IF NOT EXISTS discussions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    module_id INTEGER NOT NULL,
+    student_id TEXT NOT NULL,
+    user_type TEXT NOT NULL DEFAULT 'student',
+    content TEXT NOT NULL,
+    parent_id INTEGER REFERENCES discussions(id),
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_discussions_module ON discussions(module_id, tenant_id);
+
   -- Phase 5: Multi-tenancy tables
   CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -330,6 +371,24 @@ function migrateIfNeeded() {
       failures INTEGER NOT NULL DEFAULT 0,
       locked_until TEXT
     )
+  `);
+
+  // Performance indexes
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_login_sessions_student_tenant ON login_sessions(student_id, tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_module_visits_student_tenant ON module_visits(student_id, tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_quiz_attempts_student ON quiz_attempts(student_id);
+    CREATE INDEX IF NOT EXISTS idx_quiz_attempts_module ON quiz_attempts(module_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_submissions_student ON lab_submissions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_step_completions_student ON lab_step_completions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_case_study_submissions_student ON case_study_submissions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_students_tenant ON students(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_students_course ON students(course_id);
+    CREATE INDEX IF NOT EXISTS idx_face_verification_logs_student ON face_verification_logs(student_id);
+    CREATE INDEX IF NOT EXISTS idx_fraud_flags_student ON fraud_flags(user_id);
+    CREATE INDEX IF NOT EXISTS idx_revoked_tokens_hash ON revoked_tokens(token_hash);
+    CREATE INDEX IF NOT EXISTS idx_essay_grades_attempt ON essay_grades(quiz_attempt_id);
+    CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);
   `);
 
   // Add manage_lecturers permission and assign to lecturer role

@@ -1,0 +1,11 @@
+node_modules
+.git
+.github
+.claude
+*.md
+.env*
+!.env.example
+data.db*
+backups/
+coverage/
+.DS_Store

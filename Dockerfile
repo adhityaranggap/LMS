@@ -54,11 +54,16 @@ COPY tsconfig.json ./
 COPY scripts/ ./scripts/
 
 # Data directory for SQLite (will be mounted as volume)
-RUN mkdir -p /data
+RUN mkdir -p /data && chown -R node:node /app /data
+
+USER node
 
 ENV NODE_ENV=production
 ENV SERVER_PORT=8007
 
 EXPOSE 8007
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8007/api/health', r => process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["npx", "tsx", "server.ts"]

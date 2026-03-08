@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import { syllabus } from '../data/syllabus';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Clock, Award, BookOpen, CheckCircle2, Lock, Key, Cpu } from 'lucide-react';
+import { ArrowRight, Clock, Award, BookOpen, CheckCircle2, Lock, Key, Cpu, Circle } from 'lucide-react';
 import { ProgressRing } from '../components/ProgressRing';
 import { useProgressSummary } from '../hooks/useProgress';
 import { useAuth } from '../context/AuthContext';
@@ -35,6 +35,27 @@ export const Home = () => {
     if (!isCrypto && m.quizAttempts > 0) score += 1;
     return Math.round((score / total) * 100);
   };
+
+  const getModuleChecklist = (moduleId: number) => {
+    const m = summary.find(s => s.moduleId === moduleId);
+    return {
+      theory: !!(m && m.visitedTabs.includes('theory')),
+      lab: !!(m && m.labStepsCompleted > 0),
+      caseStudy: !!(m && m.caseSubmitted),
+      quiz: !!(m && m.quizAttempts > 0 && (m.bestScore ?? 0) >= 70),
+    };
+  };
+
+  const overallProgress = useMemo(() => {
+    if (summary.length === 0) return 0;
+    const totalModules = isCrypto ? cryptoSyllabusData.length : syllabus.length;
+    if (totalModules === 0) return 0;
+    const totalProgress = (isCrypto ? cryptoSyllabusData : syllabus).reduce((sum, mod) => {
+      return sum + getModuleProgress(mod.id);
+    }, 0);
+    return Math.round(totalProgress / totalModules);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary, isCrypto]);
 
   // Build module list based on course
   const modules = isCrypto
@@ -137,6 +158,22 @@ export const Home = () => {
         </div>
       </div>
 
+      {/* Overall Progress */}
+      {summary.length > 0 && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-700">Progress Keseluruhan</h3>
+            <span className="text-sm font-bold text-indigo-600">{overallProgress}%</span>
+          </div>
+          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: `${overallProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Modules Grid */}
       <section id="modules">
         <div className="flex items-center justify-between mb-8">
@@ -175,9 +212,29 @@ export const Home = () => {
                   <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-indigo-700 transition-colors">
                     {module.title}
                   </h3>
-                  <p className="text-slate-500 text-sm line-clamp-2 mb-4">
+                  <p className="text-slate-500 text-sm line-clamp-2 mb-3">
                     {module.description}
                   </p>
+                  {progress > 0 && progress < 100 && (() => {
+                    const cl = getModuleChecklist(module.id);
+                    return (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-xs">
+                        {[
+                          { done: cl.theory, label: 'Teori' },
+                          { done: cl.lab, label: 'Lab' },
+                          { done: cl.caseStudy, label: 'Studi Kasus' },
+                          { done: cl.quiz, label: 'Quiz' },
+                        ].map(item => (
+                          <span key={item.label} className="flex items-center gap-1">
+                            {item.done
+                              ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              : <Circle className="w-3 h-3 text-slate-300" />}
+                            <span className={item.done ? 'text-emerald-600' : 'text-slate-400'}>{item.label}</span>
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-400 group-hover:text-indigo-600 transition-colors">
                     {progress >= 100 ? (
                       <><CheckCircle2 className="w-3 h-3 text-emerald-500" /><span className="text-emerald-600">Selesai</span></>

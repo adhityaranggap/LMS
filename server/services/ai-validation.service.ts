@@ -20,6 +20,7 @@ export interface ValidationResult {
 }
 
 // Simple queue to rate-limit Groq calls (max 1/second)
+const MAX_QUEUE_SIZE = 100;
 const queue: (() => Promise<void>)[] = [];
 let processing = false;
 
@@ -127,6 +128,11 @@ export function enqueueValidation(params: {
   referenceAnswer: string;
   studentAnswer: string;
 }): void {
+  if (queue.length >= MAX_QUEUE_SIZE) {
+    console.warn('[ai-validation] Queue full, dropping validation request for', params.student_id);
+    return;
+  }
+
   queue.push(async () => {
     const result = await validateAnswer({
       question: params.question,
