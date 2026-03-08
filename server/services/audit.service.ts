@@ -1,4 +1,5 @@
 import db from '../db';
+import { logger } from './logger';
 
 export interface AuditEntry {
   tenant_id?: number;
@@ -33,6 +34,6 @@ export function logAudit(entry: AuditEntry): void {
       entry.user_agent ?? null,
     );
   } catch (e) {
-    console.error('[audit] Failed to log audit entry:', e);
+    logger.error('Failed to log audit entry', { tag: 'audit', error: String(e) });
   }
 }

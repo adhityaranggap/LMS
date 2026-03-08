@@ -3,6 +3,7 @@ import db from '../db';
 import { authMiddleware, lecturerOnly, requirePermission, AuthenticatedRequest, hashPassword } from '../auth';
 import { safeDecrypt } from '../crypto';
 import { logAudit } from '../services/audit.service';
+import { logger } from '../services/logger';
 import { tenantScope } from '../middleware/tenant';
 
 const router = Router();
@@ -84,7 +85,7 @@ router.get('/students', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ students: decryptedStudents });
   } catch (error) {
-    console.error('Students list error:', error);
+    logger.error('Students list error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -193,7 +194,7 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
       quizAttempts: attemptsWithGrades,
     });
   } catch (error) {
-    console.error('Student detail error:', error);
+    logger.error('Student detail error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -249,7 +250,7 @@ router.get('/modules/stats', (req: AuthenticatedRequest, res: Response): void =>
 
     res.json({ stats });
   } catch (error) {
-    console.error('Module stats error:', error);
+    logger.error('Module stats error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -270,7 +271,7 @@ router.get('/login-history', (req: AuthenticatedRequest, res: Response): void =>
     const decryptedLogins = logins.map(l => ({ ...l, photo: safeDecrypt(l.photo) }));
     res.json({ logins: decryptedLogins, total: total.count });
   } catch (error) {
-    console.error('Login history error:', error);
+    logger.error('Login history error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -336,7 +337,7 @@ router.post('/grade-essay', (req: AuthenticatedRequest, res: Response): void => 
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Grade essay error:', error);
+    logger.error('Grade essay error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -389,7 +390,7 @@ router.get('/dashboard-stats', (req: AuthenticatedRequest, res: Response): void 
       ungradedEssays: ungradedEssays.count,
     });
   } catch (error) {
-    console.error('Dashboard stats error:', error);
+    logger.error('Dashboard stats error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -419,7 +420,7 @@ router.get('/face-status', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ students });
   } catch (error) {
-    console.error('Face status list error:', error);
+    logger.error('Face status list error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -447,7 +448,7 @@ router.get('/face-mismatches', (req: AuthenticatedRequest, res: Response): void 
 
     res.json({ logs });
   } catch (error) {
-    console.error('Face mismatches error:', error);
+    logger.error('Face mismatches error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -480,7 +481,7 @@ router.post('/face-reset/:studentId', (req: AuthenticatedRequest, res: Response)
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Face reset error:', error);
+    logger.error('Face reset error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -519,7 +520,7 @@ router.get('/fraud-flags', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ flags, total: total.count });
   } catch (error) {
-    console.error('Fraud flags error:', error);
+    logger.error('Fraud flags error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -559,7 +560,7 @@ router.post('/fraud-flags/:id/review', (req: AuthenticatedRequest, res: Response
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Fraud flag review error:', error);
+    logger.error('Fraud flag review error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -592,7 +593,7 @@ router.get('/students/:studentId/fraud-flags', (req: AuthenticatedRequest, res: 
 
     res.json({ flags });
   } catch (error) {
-    console.error('Student fraud flags error:', error);
+    logger.error('Student fraud flags error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -626,7 +627,7 @@ router.get('/students/:studentId/sessions', (req: AuthenticatedRequest, res: Res
 
     res.json({ sessions });
   } catch (error) {
-    console.error('Student sessions error:', error);
+    logger.error('Student sessions error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -657,7 +658,7 @@ router.get('/submissions/:type/:id/validation', (req: AuthenticatedRequest, res:
 
     res.json({ validations });
   } catch (error) {
-    console.error('AI validation fetch error:', error);
+    logger.error('AI validation fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -702,7 +703,7 @@ router.get('/export/students', (req: AuthenticatedRequest, res: Response): void 
     res.setHeader('Content-Disposition', 'attachment; filename="students_export.csv"');
     res.send(csvRows.join('\n'));
   } catch (error) {
-    console.error('Export students error:', error);
+    logger.error('Export students error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -746,7 +747,7 @@ router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): voi
     res.setHeader('Content-Disposition', 'attachment; filename="audit_logs_export.csv"');
     res.send(csvRows.join('\n'));
   } catch (error) {
-    console.error('Export audit logs error:', error);
+    logger.error('Export audit logs error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -773,7 +774,7 @@ router.get('/enhanced-stats', (req: AuthenticatedRequest, res: Response): void =
       pendingAIValidations: pendingAIValidations.count,
     });
   } catch (error) {
-    console.error('Enhanced stats error:', error);
+    logger.error('Enhanced stats error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -801,7 +802,7 @@ router.get('/accounts', requirePermission('manage_lecturers'), (req: Authenticat
 
     res.json({ lecturers: rows });
   } catch (error) {
-    console.error('List lecturers error:', error);
+    logger.error('List lecturers error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -856,7 +857,7 @@ router.post('/accounts', requirePermission('manage_lecturers'), (req: Authentica
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, username, display_name: displayName });
   } catch (error) {
-    console.error('Create lecturer error:', error);
+    logger.error('Create lecturer error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -895,7 +896,7 @@ router.delete('/accounts/:id', requirePermission('manage_lecturers'), (req: Auth
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Delete lecturer error:', error);
+    logger.error('Delete lecturer error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -938,7 +939,7 @@ router.post('/accounts/:id/reset-password', requirePermission('manage_lecturers'
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Reset lecturer password error:', error);
+    logger.error('Reset lecturer password error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1050,7 +1051,7 @@ router.get('/scoreboard', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ scoreboard: ranked });
   } catch (error) {
-    console.error('Scoreboard error:', error);
+    logger.error('Scoreboard error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

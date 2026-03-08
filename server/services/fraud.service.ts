@@ -1,4 +1,5 @@
 import db from '../db';
+import { logger } from './logger';
 
 export interface AntiCheatData {
   timePerQuestion?: Record<string, number>;
@@ -36,7 +37,7 @@ export function createFraudFlag(flag: FraudFlagInput): void {
       flag.details ? JSON.stringify(flag.details) : null,
     );
   } catch (e) {
-    console.error('[fraud] Failed to create fraud flag:', e);
+    logger.error('Failed to create fraud flag', { tag: 'fraud', error: String(e) });
   }
 }
 
@@ -159,7 +160,7 @@ function checkIdenticalAnswers(userId: string, attemptId: number, tenantId: numb
       }
     }
   } catch (e) {
-    console.error('[fraud] Identical answer check error:', e);
+    logger.error('Identical answer check error', { tag: 'fraud', error: String(e) });
   }
 }
 

@@ -78,7 +78,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <div className="flex items-center gap-3">
               {user.photo ? (
                 <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
-                  <img src={user.photo} alt="Student" className="w-full h-full object-cover" />
+                  <img src={user.photo} alt="Student" className="w-full h-full object-cover" loading="lazy" />
                 </div>
               ) : (
                 <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm border-2 border-white shadow-sm">

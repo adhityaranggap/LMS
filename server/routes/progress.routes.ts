@@ -4,6 +4,7 @@ import { authMiddleware, studentOnly, AuthenticatedRequest } from '../auth';
 import { syllabusData } from '../../src/data/syllabus-data';
 import { cryptoSyllabusData } from '../../src/data/crypto-syllabus-data';
 import { logAudit } from '../services/audit.service';
+import { logger } from '../services/logger';
 import { analyzeSubmission, AntiCheatData } from '../services/fraud.service';
 import { enqueueValidation } from '../services/ai-validation.service';
 
@@ -111,7 +112,7 @@ router.post('/visit', progressRateLimit, (req: AuthenticatedRequest, res: Respon
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Visit recording error:', error);
+    logger.error('Visit recording error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -125,7 +126,7 @@ router.get('/visits', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ visits });
   } catch (error) {
-    console.error('Visits fetch error:', error);
+    logger.error('Visits fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -162,7 +163,7 @@ router.post('/lab-step', progressRateLimit, (req: AuthenticatedRequest, res: Res
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Lab step toggle error:', error);
+    logger.error('Lab step toggle error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -182,7 +183,7 @@ router.get('/lab-steps/:moduleId', (req: AuthenticatedRequest, res: Response): v
 
     res.json({ completedSteps: steps.map((s) => s.step_index) });
   } catch (error) {
-    console.error('Lab steps fetch error:', error);
+    logger.error('Lab steps fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -205,7 +206,7 @@ router.post('/lab-submit', progressRateLimit, (req: AuthenticatedRequest, res: R
 
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
-    console.error('Lab submission error:', error);
+    logger.error('Lab submission error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -289,7 +290,7 @@ router.post('/case-submit', progressRateLimit, (req: AuthenticatedRequest, res: 
 
     res.json({ success: true, id: submissionId });
   } catch (error) {
-    console.error('Case study submission error:', error);
+    logger.error('Case study submission error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -327,7 +328,7 @@ router.get('/case-submission/:moduleId', (req: AuthenticatedRequest, res: Respon
       },
     });
   } catch (error) {
-    console.error('Case submission fetch error:', error);
+    logger.error('Case submission fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -439,7 +440,7 @@ router.post('/quiz-submit', progressRateLimit, (req: AuthenticatedRequest, res: 
       mcTotal,
     });
   } catch (error) {
-    console.error('Quiz submission error:', error);
+    logger.error('Quiz submission error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -496,7 +497,7 @@ router.get('/quiz-attempts/:moduleId', (req: AuthenticatedRequest, res: Response
 
     res.json({ attempts: attemptsWithGrades });
   } catch (error) {
-    console.error('Quiz attempts fetch error:', error);
+    logger.error('Quiz attempts fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -587,7 +588,7 @@ router.get('/summary', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ summary });
   } catch (error) {
-    console.error('Summary fetch error:', error);
+    logger.error('Summary fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

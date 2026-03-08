@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import db from './db';
+import { logger } from './services/logger';
 
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const AUTH_COOKIE_NAME = 'auth_token';
@@ -208,7 +209,7 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
       permissions = perms.map(p => p.name);
       setCachedPermissions(payload.id, userType, permissions);
     } catch (err) {
-      console.warn('[auth] Failed to load permissions for user', payload.id, ':', err);
+      logger.warn('Failed to load permissions for user', { tag: 'auth', userId: payload.id, error: String(err) });
     }
   }
 

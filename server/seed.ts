@@ -1,11 +1,12 @@
 import db from './db';
 import { hashPassword } from './auth';
+import { logger } from './services/logger';
 
 export function seedDefaultLecturer(): void {
   const existing = db.prepare('SELECT id FROM lecturers WHERE username = ?').get('admin');
 
   if (existing) {
-    console.log('[seed] Default lecturer already exists, skipping.');
+    logger.info('Default lecturer already exists, skipping.', { tag: 'seed' });
     return;
   }
 
@@ -19,7 +20,7 @@ export function seedDefaultLecturer(): void {
     'INSERT INTO lecturers (username, password_hash, salt, display_name) VALUES (?, ?, ?, ?)'
   ).run('admin', hash, salt, 'Dosen Pengampu');
 
-  console.log('[seed] Default lecturer created (username: admin).');
+  logger.info('Default lecturer created (username: admin).', { tag: 'seed' });
 }
 
 export function seedRolesAndPermissions(): void {
@@ -88,5 +89,5 @@ export function seedRolesAndPermissions(): void {
     }
   }
 
-  console.log('[seed] Roles and permissions seeded.');
+  logger.info('Roles and permissions seeded.', { tag: 'seed' });
 }

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/:moduleId', authMiddleware, (req: AuthenticatedRequest, res: Respon
 
     res.json({ override: parsed, updatedAt: row.updated_at, updatedBy: row.updated_by });
   } catch (error) {
-    console.error('Content GET error:', error);
+    logger.error('Content GET error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -54,7 +55,7 @@ router.get('/', (_req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ overrides: rows });
   } catch (error) {
-    console.error('Content list error:', error);
+    logger.error('Content list error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -124,7 +125,7 @@ router.put('/:moduleId', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Content PUT error:', error);
+    logger.error('Content PUT error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -141,7 +142,7 @@ router.delete('/:moduleId', (req: AuthenticatedRequest, res: Response): void => 
     db.prepare('DELETE FROM module_content_overrides WHERE module_id = ?').run(moduleId);
     res.json({ success: true });
   } catch (error) {
-    console.error('Content DELETE error:', error);
+    logger.error('Content DELETE error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

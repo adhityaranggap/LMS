@@ -1,5 +1,6 @@
 import db from '../db';
 import { createFraudFlag } from './fraud.service';
+import { logger } from './logger';
 
 const GROQ_MODEL = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
@@ -32,7 +33,7 @@ async function processQueue(): Promise<void> {
     try {
       await task();
     } catch (e) {
-      console.error('[ai-validation] Queue task error:', e);
+      logger.error('Queue task error', { tag: 'ai-validation', error: String(e) });
     }
     await new Promise(r => setTimeout(r, 1000));
   }
@@ -42,7 +43,7 @@ async function processQueue(): Promise<void> {
 export async function validateAnswer(input: ValidationInput): Promise<ValidationResult | null> {
   const groqApiKey = process.env.GROQ_API_KEY;
   if (!groqApiKey) {
-    console.warn('[ai-validation] GROQ_API_KEY not configured, skipping validation');
+    logger.warn('GROQ_API_KEY not configured, skipping validation', { tag: 'ai-validation' });
     return null;
   }
 
@@ -93,7 +94,7 @@ Analisis jawaban mahasiswa di atas.`;
     });
 
     if (!response.ok) {
-      console.error('[ai-validation] Groq API error:', response.status);
+      logger.error('Groq API error', { tag: 'ai-validation', status: response.status });
       return null;
     }
 
@@ -112,7 +113,7 @@ Analisis jawaban mahasiswa di atas.`;
 
     return result;
   } catch (e) {
-    console.error('[ai-validation] Error:', e);
+    logger.error('Validation error', { tag: 'ai-validation', error: String(e) });
     return null;
   }
 }
@@ -129,7 +130,7 @@ export function enqueueValidation(params: {
   studentAnswer: string;
 }): void {
   if (queue.length >= MAX_QUEUE_SIZE) {
-    console.warn('[ai-validation] Queue full, dropping validation request for', params.student_id);
+    logger.warn('Queue full, dropping validation request', { tag: 'ai-validation', student_id: params.student_id });
     return;
   }
 
@@ -178,7 +179,7 @@ export function enqueueValidation(params: {
         });
       }
     } catch (e) {
-      console.error('[ai-validation] DB insert error:', e);
+      logger.error('DB insert error', { tag: 'ai-validation', error: String(e) });
     }
   });
 

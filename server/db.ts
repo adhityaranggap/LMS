@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import { logger } from './services/logger';
 
 // In production Docker: use /data volume for persistence
 // In development: use project root
@@ -406,7 +407,7 @@ function migrateIfNeeded() {
 try {
   migrateIfNeeded();
 } catch (e) {
-  console.warn('[db] Migration warning:', e);
+  logger.warn('Migration warning', { tag: 'db', error: String(e) });
 }
 
 export default db;

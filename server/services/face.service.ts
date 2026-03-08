@@ -1,6 +1,7 @@
 import * as faceapi from '@vladmandic/face-api';
 import { Canvas, Image, createCanvas, loadImage } from 'canvas';
 import path from 'path';
+import { logger } from './logger';
 
 // Patch face-api to use node-canvas
 faceapi.env.monkeyPatch({ Canvas, Image } as any);
@@ -23,7 +24,7 @@ export async function initFaceService(): Promise<void> {
     'model',
   );
 
-  console.log('[face-service] Loading face detection models...');
+  logger.info('Loading face detection models...', { tag: 'face-service' });
   const t0 = Date.now();
 
   await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
@@ -31,7 +32,7 @@ export async function initFaceService(): Promise<void> {
   await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
 
   modelsLoaded = true;
-  console.log(`[face-service] Models loaded in ${Date.now() - t0}ms`);
+  logger.info(`Models loaded in ${Date.now() - t0}ms`, { tag: 'face-service' });
 }
 
 export function isModelReady(): boolean {

@@ -4,6 +4,7 @@ dotenv.config({ path: '.env.local' });
 import path from 'path';
 import express, { Request, Response, NextFunction } from 'express';
 import db from './server/db';
+import { logger } from './server/services/logger';
 import authRoutes from './server/routes/auth.routes';
 import progressRoutes from './server/routes/progress.routes';
 import lecturerRoutes from './server/routes/lecturer.routes';
@@ -24,7 +25,7 @@ import { initFaceService } from './server/services/face.service';
 const REQUIRED_ENV = ['JWT_SECRET', 'PHOTO_ENCRYPTION_KEY', 'LECTURER_DEFAULT_PASSWORD'] as const;
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
-    console.error(`[FATAL] Missing required environment variable: ${key}`);
+    logger.error('Missing required environment variable', { tag: 'FATAL', key });
     process.exit(1);
   }
 }
@@ -32,30 +33,30 @@ for (const key of REQUIRED_ENV) {
 const jwtSecret = process.env.JWT_SECRET!;
 const WEAK_SECRETS = ['dev-secret-change-in-production-use-a-long-random-string', 'change-me-to-a-random-secret-in-production'];
 if (WEAK_SECRETS.includes(jwtSecret)) {
-  console.error('[FATAL] JWT_SECRET is a known default. Generate one with: openssl rand -hex 32');
+  logger.error('JWT_SECRET is a known default. Generate one with: openssl rand -hex 32', { tag: 'FATAL' });
   process.exit(1);
 }
 if (process.env.NODE_ENV === 'production' && jwtSecret.length < 64) {
-  console.error('[FATAL] JWT_SECRET must be at least 64 hex chars in production. Generate with: openssl rand -hex 32');
+  logger.error('JWT_SECRET must be at least 64 hex chars in production. Generate with: openssl rand -hex 32', { tag: 'FATAL' });
   process.exit(1);
 }
 if (jwtSecret.length < 32) {
-  console.warn('[WARN] JWT_SECRET is short. Use at least 64 hex chars: openssl rand -hex 32');
+  logger.warn('JWT_SECRET is short. Use at least 64 hex chars: openssl rand -hex 32');
 }
 
 const photoKey = process.env.PHOTO_ENCRYPTION_KEY!;
 if (!/^[0-9a-fA-F]+$/.test(photoKey)) {
-  console.error('[FATAL] PHOTO_ENCRYPTION_KEY must be valid hex. Generate with: openssl rand -hex 32');
+  logger.error('PHOTO_ENCRYPTION_KEY must be valid hex. Generate with: openssl rand -hex 32', { tag: 'FATAL' });
   process.exit(1);
 }
 if (process.env.NODE_ENV === 'production' && photoKey.length < 64) {
-  console.error('[FATAL] PHOTO_ENCRYPTION_KEY must be at least 64 hex chars. Generate with: openssl rand -hex 32');
+  logger.error('PHOTO_ENCRYPTION_KEY must be at least 64 hex chars. Generate with: openssl rand -hex 32', { tag: 'FATAL' });
   process.exit(1);
 }
 
 const COMMON_PASSWORDS = ['admin123', 'password', '123456', 'admin', 'password123', 'letmein', 'qwerty'];
 if (COMMON_PASSWORDS.includes(process.env.LECTURER_DEFAULT_PASSWORD!)) {
-  console.warn('[WARN] LECTURER_DEFAULT_PASSWORD is a common password. Use a strong password in production.');
+  logger.warn('LECTURER_DEFAULT_PASSWORD is a common password. Use a strong password in production.');
 }
 
 const app = express();
@@ -146,7 +147,7 @@ if (process.env.NODE_ENV === 'production') {
 
 // --- Global error handler ---
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Unhandled error:', err);
+  logger.error('Unhandled error', { error: String(err) });
   res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -156,7 +157,7 @@ seedRolesAndPermissions();
 
 // --- Periodic cleanup of expired revoked tokens (every hour) ---
 setInterval(() => {
-  try { cleanupRevokedTokens(); } catch (e) { console.error('Token cleanup error:', e); }
+  try { cleanupRevokedTokens(); } catch (e) { logger.error('Token cleanup error', { error: String(e) }); }
 }, 60 * 60 * 1000);
 
 // --- Async startup: load face models, then start server ---
@@ -166,22 +167,22 @@ let server: ReturnType<typeof app.listen>;
   try {
     await initFaceService();
   } catch (e) {
-    console.warn('[server] Face service init failed (face recognition disabled):', e);
+    logger.warn('Face service init failed (face recognition disabled)', { error: String(e) });
   }
 
   server = app.listen(PORT, () => {
-    console.log(`[server] InfoSec LMS backend running on http://localhost:${PORT}`);
+    logger.info(`InfoSec LMS backend running on http://localhost:${PORT}`);
   });
 })();
 
 // --- Graceful shutdown ---
 function gracefulShutdown(signal: string) {
-  console.log(`\n[server] Received ${signal}. Shutting down gracefully...`);
+  logger.info(`Received ${signal}. Shutting down gracefully...`);
   if (server) {
     server.close(() => {
-      console.log('[server] HTTP server closed.');
+      logger.info('HTTP server closed.');
       db.close();
-      console.log('[server] Database connection closed.');
+      logger.info('Database connection closed.');
       process.exit(0);
     });
   } else {
@@ -191,7 +192,7 @@ function gracefulShutdown(signal: string) {
 
   // Force exit after 10 seconds
   setTimeout(() => {
-    console.error('[server] Forced shutdown after timeout.');
+    logger.error('Forced shutdown after timeout.');
     db.close();
     process.exit(1);
   }, 10000);
@@ -201,5 +202,5 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[server] Unhandled rejection:', reason);
+  logger.error('Unhandled rejection', { error: String(reason) });
 });

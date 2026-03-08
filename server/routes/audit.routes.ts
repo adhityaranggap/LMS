@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import db from '../db';
 import { authMiddleware, AuthenticatedRequest } from '../auth';
 import { logAudit } from '../services/audit.service';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -103,7 +104,7 @@ router.post('/device-info', (req: AuthenticatedRequest, res: Response): void => 
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Device info error:', error);
+    logger.error('Device info error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -158,7 +159,7 @@ router.get('/logs', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ logs, total: total.count });
   } catch (error) {
-    console.error('Audit logs error:', error);
+    logger.error('Audit logs error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -185,7 +186,7 @@ router.get('/student/:studentId/timeline', (req: AuthenticatedRequest, res: Resp
 
     res.json({ timeline });
   } catch (error) {
-    console.error('Student timeline error:', error);
+    logger.error('Student timeline error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

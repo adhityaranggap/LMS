@@ -9,6 +9,7 @@ import {
 } from '../services/face.service';
 import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
 import { encryptData, safeDecrypt } from '../crypto';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -68,7 +69,7 @@ router.get('/status/:studentId', (req: Request, res: Response): void => {
       enrolled: !!(student && student.is_enrolled),
     });
   } catch (error) {
-    console.error('Face status error:', error);
+    logger.error('Face status error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -154,7 +155,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
     res.json({ success: true, message: 'Wajah berhasil didaftarkan.' });
   } catch (error) {
-    console.error('Face register DB error:', error);
+    logger.error('Face register DB error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -248,7 +249,7 @@ router.post('/verify', authMiddleware, async (req: AuthenticatedRequest, res: Re
       }
     }
   } catch (error) {
-    console.error('Face verify error:', error);
+    logger.error('Face verify error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -274,7 +275,7 @@ router.post(
 
       res.json({ success: true, message: 'Face registration reset. Student can re-register on next login.' });
     } catch (error) {
-      console.error('Face re-register error:', error);
+      logger.error('Face re-register error', { error: String(error) });
       res.status(500).json({ error: 'Internal server error' });
     }
   },

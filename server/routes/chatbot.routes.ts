@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authMiddleware, AuthenticatedRequest } from '../auth';
 import { logAudit } from '../services/audit.service';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -163,7 +164,7 @@ router.post('/query', (req: AuthenticatedRequest, res: Response): void => {
 
   const groqApiKey = process.env.GROQ_API_KEY;
   if (!groqApiKey) {
-    console.error('GROQ_API_KEY not configured');
+    logger.error('GROQ_API_KEY not configured');
     res.status(503).json({ error: 'Chatbot service unavailable.' });
     return;
   }
@@ -192,14 +193,14 @@ router.post('/query', (req: AuthenticatedRequest, res: Response): void => {
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         const errMsg = (body as any)?.error?.message ?? `Groq API error ${response.status}`;
-        console.error('Groq API error:', errMsg);
+        logger.error('Groq API error', { error: errMsg });
         res.status(502).json({ error: 'Chatbot service error.' });
         return;
       }
       const data = await response.json();
       const reply = data?.choices?.[0]?.message?.content;
       if (typeof reply !== 'string') {
-        console.error('[chatbot] Unexpected Groq response structure:', JSON.stringify(data).slice(0, 200));
+        logger.error('Unexpected Groq response structure', { tag: 'chatbot', response: JSON.stringify(data).slice(0, 200) });
         res.status(502).json({ error: 'Chatbot service error.' });
         return;
       }
@@ -222,7 +223,7 @@ router.post('/query', (req: AuthenticatedRequest, res: Response): void => {
       res.json({ reply });
     })
     .catch((err) => {
-      console.error('Groq fetch error:', err);
+      logger.error('Groq fetch error', { error: String(err) });
       res.status(502).json({ error: 'Chatbot service error.' });
     });
 });

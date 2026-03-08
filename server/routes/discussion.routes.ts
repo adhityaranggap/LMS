@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, AuthenticatedRequest } from '../auth';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.get('/:moduleId', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ threads, total: total.count, page, limit });
   } catch (error) {
-    console.error('Discussion list error:', error);
+    logger.error('Discussion list error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -77,7 +78,7 @@ router.get('/:moduleId/:threadId/replies', (req: AuthenticatedRequest, res: Resp
 
     res.json({ replies });
   } catch (error) {
-    console.error('Discussion replies error:', error);
+    logger.error('Discussion replies error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -113,7 +114,7 @@ router.post('/:moduleId', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
-    console.error('Discussion post error:', error);
+    logger.error('Discussion post error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -148,7 +149,7 @@ router.delete('/:id', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Discussion delete error:', error);
+    logger.error('Discussion delete error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

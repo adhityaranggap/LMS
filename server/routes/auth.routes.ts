@@ -17,6 +17,7 @@ import {
   isModelReady,
 } from '../services/face.service';
 import { logAudit } from '../services/audit.service';
+import { logger } from '../services/logger';
 import crypto from 'crypto';
 
 const router = Router();
@@ -307,7 +308,7 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
       },
     });
   } catch (error) {
-    console.error('Student login error:', error);
+    logger.error('Student login error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -363,7 +364,7 @@ router.post('/lecturer-login', (req: Request, res: Response): void => {
       `).all(String(lecturer.id)) as { name: string }[];
       permissions = perms.map(p => p.name);
     } catch (err) {
-      console.warn('[auth] Failed to load permissions:', err);
+      logger.warn('Failed to load permissions', { tag: 'auth', error: String(err) });
     }
 
     const sessionId = crypto.randomBytes(16).toString('hex');
@@ -399,7 +400,7 @@ router.post('/lecturer-login', (req: Request, res: Response): void => {
       },
     });
   } catch (error) {
-    console.error('Lecturer login error:', error);
+    logger.error('Lecturer login error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -468,7 +469,7 @@ router.get('/me', authMiddleware, (req: AuthenticatedRequest, res: Response): vo
       });
     }
   } catch (error) {
-    console.error('Auth me error:', error);
+    logger.error('Auth me error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -523,7 +524,7 @@ router.post('/change-password', authMiddleware, (req: AuthenticatedRequest, res:
 
     res.json({ success: true, session_invalidated: true });
   } catch (error) {
-    console.error('Change password error:', error);
+    logger.error('Change password error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -550,7 +551,7 @@ router.post('/enroll-student', authMiddleware, (req: AuthenticatedRequest, res: 
     }
     res.json({ success: true });
   } catch (error) {
-    console.error('Enroll student error:', error);
+    logger.error('Enroll student error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -572,7 +573,7 @@ router.post('/unenroll-student', authMiddleware, (req: AuthenticatedRequest, res
     db.prepare('UPDATE students SET is_enrolled = 0 WHERE student_id = ?').run(studentId);
     res.json({ success: true });
   } catch (error) {
-    console.error('Unenroll student error:', error);
+    logger.error('Unenroll student error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/', (req: AuthenticatedRequest, res: Response): void => {
     ).all(tenantId);
     res.json({ deadlines: rows });
   } catch (error) {
-    console.error('Deadlines fetch error:', error);
+    logger.error('Deadlines fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -53,7 +54,7 @@ router.post('/', lecturerOnly, (req: AuthenticatedRequest, res: Response): void 
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Deadline create error:', error);
+    logger.error('Deadline create error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -75,7 +76,7 @@ router.delete('/:id', lecturerOnly, (req: AuthenticatedRequest, res: Response): 
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Deadline delete error:', error);
+    logger.error('Deadline delete error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, lecturerOnly, requirePermission, AuthenticatedRequest } from '../auth';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.get('/', (req: AuthenticatedRequest, res: Response): void => {
     const tenants = db.prepare('SELECT id, name, slug, logo_url, config, is_active, created_at FROM tenants ORDER BY id').all();
     res.json({ tenants });
   } catch (error) {
-    console.error('List tenants error:', error);
+    logger.error('List tenants error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -44,7 +45,7 @@ router.post('/', (req: AuthenticatedRequest, res: Response): void => {
       res.status(409).json({ error: 'Tenant slug already exists.' });
       return;
     }
-    console.error('Create tenant error:', error);
+    logger.error('Create tenant error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -85,7 +86,7 @@ router.put('/:id', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Update tenant error:', error);
+    logger.error('Update tenant error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -123,7 +124,7 @@ router.get('/:id/stats', (req: AuthenticatedRequest, res: Response): void => {
       avgQuizScore: avgScore.avg,
     });
   } catch (error) {
-    console.error('Tenant stats error:', error);
+    logger.error('Tenant stats error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

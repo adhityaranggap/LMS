@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import db from '../db';
 import { authMiddleware, AuthenticatedRequest } from '../auth';
+import { logger } from '../services/logger';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ notifications: rows, unread_count: unreadCount.count });
   } catch (error) {
-    console.error('Notifications fetch error:', error);
+    logger.error('Notifications fetch error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -46,7 +47,7 @@ router.post('/:id/read', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Notification read error:', error);
+    logger.error('Notification read error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -64,7 +65,7 @@ router.post('/read-all', (req: AuthenticatedRequest, res: Response): void => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Notification read-all error:', error);
+    logger.error('Notification read-all error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -139,6 +140,6 @@ export function createNotification(params: {
       params.body ?? null,
     );
   } catch (error) {
-    console.error('Create notification error:', error);
+    logger.error('Create notification error', { error: String(error) });
   }
 }
