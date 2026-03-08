@@ -7,6 +7,7 @@ interface AuditLog {
   id: number;
   user_id: string | null;
   user_type: string | null;
+  display_name: string | null;
   session_id: string | null;
   action: string;
   resource_type: string | null;
@@ -162,7 +163,19 @@ export const AuditLogViewer: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{log.user_id || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        {log.user_type && (
+                          <span className={clsx(
+                            'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                            log.user_type === 'lecturer' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                          )}>
+                            {log.user_type}
+                          </span>
+                        )}
+                        <span className="font-mono text-xs">{log.display_name || log.user_id || '-'}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <span className={clsx('px-2 py-0.5 rounded text-xs font-medium', actionColors[log.action] || 'bg-slate-100 text-slate-600')}>
                         {log.action}

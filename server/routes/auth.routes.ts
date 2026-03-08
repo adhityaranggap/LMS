@@ -206,13 +206,17 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
     // Encrypt photo before storage
     const encryptedPhoto = photo ? encryptData(photo) : null;
 
+    const courseId = req.body.course_id === 'crypto' ? 'crypto' : 'infosec';
+
     if (existingStudent) {
       if (encryptedPhoto) {
-        db.prepare('UPDATE students SET photo = ? WHERE student_id = ?').run(encryptedPhoto, studentId);
+        db.prepare('UPDATE students SET photo = ?, course_id = ? WHERE student_id = ?').run(encryptedPhoto, courseId, studentId);
+      } else {
+        db.prepare('UPDATE students SET course_id = ? WHERE student_id = ?').run(courseId, studentId);
       }
     } else {
       // Auto-create student record (not enrolled by default — lecturer must enroll)
-      db.prepare('INSERT INTO students (student_id, photo, is_enrolled) VALUES (?, ?, 0)').run(studentId, encryptedPhoto);
+      db.prepare('INSERT INTO students (student_id, photo, is_enrolled, course_id) VALUES (?, ?, 0, ?)').run(studentId, encryptedPhoto, courseId);
       res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.' });
       return;
     }
@@ -275,7 +279,6 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
     // Create login session (store encrypted photo)
     db.prepare('INSERT INTO login_sessions (student_id, photo) VALUES (?, ?)').run(studentId, encryptedPhoto);
 
-    const courseId = req.body.course_id === 'crypto' ? 'crypto' : 'infosec';
     const sessionId = crypto.randomBytes(16).toString('hex');
     const token = generateToken(studentId, 'student', courseId);
 
@@ -300,7 +303,6 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
         id: studentId,
         role: 'student',
         course: courseId,
-        photo: photo || undefined,
         is_face_registered: !!(faceStatus?.is_face_registered),
       },
     });

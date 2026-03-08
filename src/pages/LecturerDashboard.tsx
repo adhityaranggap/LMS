@@ -59,6 +59,7 @@ interface DashboardStats {
 interface StudentRow {
   student_id: string;
   created_at: string;
+  course_id: string | null;
   last_login: string | null;
   modules_visited: number;
   avg_score: number | null;
@@ -66,14 +67,14 @@ interface StudentRow {
 
 interface LoginSession {
   student_id: string;
-  photo: string;
+  photo: string | null;
   login_time: string;
 }
 
 type SortKey = 'student_id' | 'last_login' | 'modules_visited' | 'avg_score';
 type SortDir = 'asc' | 'desc';
 
-type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face' | 'audit' | 'fraud' | 'lecturers';
+type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face' | 'scoreboard' | 'audit' | 'fraud' | 'lecturers';
 
 interface FaceStatusRow {
   student_id: string;
@@ -89,6 +90,18 @@ interface LecturerAccount {
   display_name: string;
   password_changed_at: string | null;
   created_at: string;
+}
+
+interface ScoreboardRow {
+  rank: number;
+  student_id: string;
+  course_id: string | null;
+  quiz_avg: number;
+  modules_visited: number;
+  lab_activity: number;
+  login_count: number;
+  case_count: number;
+  composite_score: number;
 }
 
 interface FaceMismatchLog {
@@ -156,6 +169,12 @@ export const LecturerDashboard: React.FC = () => {
   const [faceStatuses, setFaceStatuses] = useState<FaceStatusRow[]>([]);
   const [faceMismatches, setFaceMismatches] = useState<FaceMismatchLog[]>([]);
 
+  // Scoreboard
+  const [scoreboardData, setScoreboardData] = useState<ScoreboardRow[]>([]);
+  const [scoreboardPeriod, setScoreboardPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [scoreboardCourse, setScoreboardCourse] = useState<'all' | 'infosec' | 'crypto'>('all');
+  const [loadingScoreboard, setLoadingScoreboard] = useState(false);
+
   // Lecturer accounts
   const [lecturerAccounts, setLecturerAccounts] = useState<LecturerAccount[]>([]);
   const [lecturerForm, setLecturerForm] = useState({ username: '', display_name: '', password: '' });
@@ -171,9 +190,10 @@ export const LecturerDashboard: React.FC = () => {
   const [loadingFace, setLoadingFace] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Sort state for students table
+  // Sort & filter state for students table
   const [sortKey, setSortKey] = useState<SortKey>('student_id');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [courseFilter, setCourseFilter] = useState<'all' | 'infosec' | 'crypto'>('all');
 
   // Pagination for students
   const [studentPage, setStudentPage] = useState(1);
@@ -221,6 +241,20 @@ export const LecturerDashboard: React.FC = () => {
   useEffect(() => {
     if (activeTab === 'face') fetchFaceData();
   }, [activeTab, fetchFaceData]);
+
+  const fetchScoreboard = useCallback(() => {
+    setLoadingScoreboard(true);
+    const params = new URLSearchParams({ period: scoreboardPeriod });
+    if (scoreboardCourse !== 'all') params.set('course', scoreboardCourse);
+    api<{ scoreboard: ScoreboardRow[] }>(`/api/lecturer/scoreboard?${params}`)
+      .then(d => setScoreboardData(d.scoreboard))
+      .catch(() => setScoreboardData([]))
+      .finally(() => setLoadingScoreboard(false));
+  }, [scoreboardPeriod, scoreboardCourse]);
+
+  useEffect(() => {
+    if (activeTab === 'scoreboard') fetchScoreboard();
+  }, [activeTab, fetchScoreboard]);
 
   const fetchLecturerAccounts = useCallback(() => {
     api<{ lecturers: LecturerAccount[] }>('/api/lecturer/accounts')
@@ -295,7 +329,9 @@ export const LecturerDashboard: React.FC = () => {
     setStudentPage(1);
   };
 
-  const sortedStudents = [...students].sort((a, b) => {
+  const filteredStudents = courseFilter === 'all' ? students : students.filter(s => s.course_id === courseFilter);
+
+  const sortedStudents = [...filteredStudents].sort((a, b) => {
     const dir = sortDir === 'asc' ? 1 : -1;
     switch (sortKey) {
       case 'student_id':
@@ -328,6 +364,7 @@ export const LecturerDashboard: React.FC = () => {
     { key: 'history',   label: 'Login History',    icon: History,         allowed: canViewStudents },
     { key: 'content',   label: 'Edit Materi',      icon: BookOpen,        allowed: canManageContent },
     { key: 'face',      label: 'Face Recognition', icon: ScanFace,        allowed: canManageEnrollment },
+    { key: 'scoreboard', label: 'Scoreboard',      icon: TrendingUp,      allowed: canViewStudents },
     { key: 'audit',     label: 'Audit Log',        icon: FileSearch,      allowed: canViewAuditLogs },
     { key: 'fraud',     label: 'Fraud Detection',  icon: ShieldAlert,     allowed: canViewFraud },
     { key: 'lecturers', label: 'Manage Lecturers', icon: UserCog,         allowed: canManageLecturers },
@@ -727,12 +764,16 @@ export const LecturerDashboard: React.FC = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-6">
                     {sessions.slice(0, 10).map((s, i) => (
                       <div key={`${s.student_id}-${i}`} className="text-center space-y-2">
-                        <div className="w-16 h-16 mx-auto rounded-full overflow-hidden border-2 border-slate-200 shadow-sm">
-                          <img
-                            src={s.photo}
-                            alt={s.student_id}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-16 h-16 mx-auto rounded-full overflow-hidden border-2 border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center">
+                          {s.photo ? (
+                            <img
+                              src={s.photo}
+                              alt={s.student_id}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Users className="w-6 h-6 text-slate-400" />
+                          )}
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-slate-900">{s.student_id}</p>
@@ -751,11 +792,27 @@ export const LecturerDashboard: React.FC = () => {
           {/* Students Tab */}
           {activeTab === 'students' && (!canViewStudents ? <AccessDenied /> : (
             <>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">All Students</h1>
-                <p className="text-sm text-slate-500 mt-1">
-                  Click a student to view detailed progress.
-                </p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900">All Students</h1>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Click a student to view detailed progress.
+                  </p>
+                </div>
+                <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                  {([['all', 'Semua'], ['infosec', 'Pengujian Keamanan'], ['crypto', 'Kriptografi']] as const).map(([val, label]) => (
+                    <button
+                      key={val}
+                      onClick={() => { setCourseFilter(val); setStudentPage(1); }}
+                      className={clsx(
+                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                        courseFilter === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -769,6 +826,9 @@ export const LecturerDashboard: React.FC = () => {
                       <thead className="bg-slate-50 border-b border-slate-100">
                         <tr>
                           <SortableHeader sortKeyName="student_id" label="Student ID" />
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            Mata Kuliah
+                          </th>
                           <SortableHeader sortKeyName="last_login" label="Last Login" />
                           <SortableHeader sortKeyName="modules_visited" label="Modules Visited" />
                           <SortableHeader sortKeyName="avg_score" label="Avg Score" />
@@ -790,6 +850,14 @@ export const LecturerDashboard: React.FC = () => {
                               >
                                 {s.student_id}
                               </Link>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={clsx(
+                                'text-[10px] px-2 py-0.5 rounded-full font-semibold',
+                                s.course_id === 'crypto' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                              )}>
+                                {s.course_id === 'crypto' ? 'Kriptografi' : 'Peng. Keamanan'}
+                              </span>
                             </td>
                             <td className="px-4 py-3 text-slate-600">
                               {formatDate(s.last_login)}
@@ -1547,12 +1615,16 @@ export const LecturerDashboard: React.FC = () => {
                         key={`${s.student_id}-${i}`}
                         className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50 transition-colors"
                       >
-                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-200 shadow-sm flex-shrink-0">
-                          <img
-                            src={s.photo}
-                            alt={s.student_id}
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-200 shadow-sm flex-shrink-0 bg-slate-100 flex items-center justify-center">
+                          {s.photo ? (
+                            <img
+                              src={s.photo}
+                              alt={s.student_id}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Users className="w-5 h-5 text-slate-400" />
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <Link
@@ -1572,6 +1644,125 @@ export const LecturerDashboard: React.FC = () => {
               </div>
             </>
           ))}
+          {/* Scoreboard Tab */}
+          {activeTab === 'scoreboard' && (!canViewStudents ? <AccessDenied /> : (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-slate-900">Scoreboard</h1>
+                  <p className="text-sm text-slate-500 mt-1">Peringkat mahasiswa berdasarkan aktivitas dan nilai.</p>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    {([['daily', 'Harian'], ['weekly', 'Mingguan'], ['monthly', 'Bulanan']] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        onClick={() => setScoreboardPeriod(val)}
+                        className={clsx(
+                          'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                          scoreboardPeriod === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    {([['all', 'Semua'], ['infosec', 'InfoSec'], ['crypto', 'Kripto']] as const).map(([val, label]) => (
+                      <button
+                        key={val}
+                        onClick={() => setScoreboardCourse(val)}
+                        className={clsx(
+                          'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                          scoreboardCourse === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                {loadingScoreboard ? (
+                  <div className="p-8 text-center text-slate-400 text-sm">Memuat...</div>
+                ) : scoreboardData.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-sm">Belum ada data untuk periode ini.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-16">Rank</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Student ID</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Mata Kuliah</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Quiz Avg</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Modules</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Labs</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Logins</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">Cases</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-48">Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scoreboardData.map(row => (
+                          <tr key={row.student_id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="px-4 py-3">
+                              <span className={clsx(
+                                'inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold',
+                                row.rank === 1 ? 'bg-amber-100 text-amber-700' :
+                                row.rank === 2 ? 'bg-slate-200 text-slate-700' :
+                                row.rank === 3 ? 'bg-orange-100 text-orange-700' :
+                                'text-slate-500'
+                              )}>
+                                {row.rank}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Link to={`/lecturer/student/${row.student_id}`} className="font-medium text-indigo-600 hover:text-indigo-800">
+                                {row.student_id}
+                              </Link>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={clsx(
+                                'px-2 py-0.5 rounded text-xs font-medium',
+                                row.course_id === 'crypto' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                              )}>
+                                {row.course_id === 'crypto' ? 'Kriptografi' : 'InfoSec'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-mono text-xs">{row.quiz_avg}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs">{row.modules_visited}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs">{row.lab_activity}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs">{row.login_count}</td>
+                            <td className="px-4 py-3 text-center font-mono text-xs">{row.case_count}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={clsx(
+                                      'h-full rounded-full transition-all',
+                                      row.composite_score >= 70 ? 'bg-emerald-500' :
+                                      row.composite_score >= 40 ? 'bg-amber-500' :
+                                      'bg-red-400'
+                                    )}
+                                    style={{ width: `${Math.min(row.composite_score, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-semibold text-slate-700 w-10 text-right">{row.composite_score}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
           {activeTab === 'audit' && (
             canViewAuditLogs
               ? <AuditLogViewer />

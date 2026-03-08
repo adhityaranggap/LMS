@@ -302,6 +302,12 @@ function migrateIfNeeded() {
     ).run();
   }
 
+  // Add course_id to students if missing
+  const studentCols3 = db.pragma('table_info(students)') as { name: string }[];
+  if (!studentCols3.find(c => c.name === 'course_id')) {
+    db.exec("ALTER TABLE students ADD COLUMN course_id TEXT DEFAULT 'infosec'");
+  }
+
   // Add tokens_invalidated_at to lecturers for session invalidation on password change
   const lecturerCols2 = db.pragma('table_info(lecturers)') as { name: string }[];
   if (!lecturerCols2.find(c => c.name === 'tokens_invalidated_at')) {

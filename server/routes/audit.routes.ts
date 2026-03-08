@@ -124,32 +124,35 @@ router.get('/logs', (req: AuthenticatedRequest, res: Response): void => {
   const tenantId = (req as any).tenantId ?? 1;
 
   try {
-    let where = 'WHERE tenant_id = ?';
+    let where = 'WHERE al.tenant_id = ?';
     const params: unknown[] = [tenantId];
 
     if (studentId) {
-      where += ' AND user_id = ?';
+      where += ' AND al.user_id = ?';
       params.push(studentId);
     }
     if (action) {
-      where += ' AND action = ?';
+      where += ' AND al.action = ?';
       params.push(action);
     }
     if (dateFrom) {
-      where += ' AND created_at >= ?';
+      where += ' AND al.created_at >= ?';
       params.push(dateFrom);
     }
     if (dateTo) {
-      where += ' AND created_at <= ?';
+      where += ' AND al.created_at <= ?';
       params.push(dateTo);
     }
 
-    const total = db.prepare(`SELECT COUNT(*) as count FROM audit_logs ${where}`).get(...params) as { count: number };
+    const total = db.prepare(`SELECT COUNT(*) as count FROM audit_logs al ${where}`).get(...params) as { count: number };
 
     const logs = db.prepare(`
-      SELECT id, user_id, user_type, session_id, action, resource_type, resource_id, details, ip_address, user_agent, created_at
-      FROM audit_logs ${where}
-      ORDER BY created_at DESC
+      SELECT al.id, al.user_id, al.user_type, al.session_id, al.action, al.resource_type, al.resource_id, al.details, al.ip_address, al.user_agent, al.created_at,
+        CASE WHEN al.user_type = 'lecturer'
+          THEN (SELECT display_name FROM lecturers WHERE id = CAST(al.user_id AS INTEGER))
+          ELSE NULL END as display_name
+      FROM audit_logs al ${where}
+      ORDER BY al.created_at DESC
       LIMIT ? OFFSET ?
     `).all(...params, limit, offset);
 

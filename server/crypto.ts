@@ -6,8 +6,8 @@ const TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
   const key = process.env.PHOTO_ENCRYPTION_KEY;
-  if (!key || key.length < 32) {
-    throw new Error('PHOTO_ENCRYPTION_KEY must be set and at least 32 hex chars. Generate with: openssl rand -hex 32');
+  if (!key || key.length < 64) {
+    throw new Error('PHOTO_ENCRYPTION_KEY must be set and at least 64 hex chars (32 bytes). Generate with: openssl rand -hex 32');
   }
   return Buffer.from(key, 'hex');
 }
@@ -78,6 +78,6 @@ export function safeDecrypt(data: string | null): string | null {
   try {
     return decryptData(data);
   } catch {
-    return data; // fallback to raw if decryption fails
+    return null; // decryption failed — return null instead of raw encrypted data
   }
 }

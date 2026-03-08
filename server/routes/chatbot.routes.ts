@@ -109,8 +109,8 @@ interface RateLimitEntry {
 }
 
 const chatRateLimitMap = new Map<string, RateLimitEntry>();
-const CHAT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const CHAT_RATE_LIMIT_MAX = 10;
+const CHAT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const CHAT_RATE_LIMIT_MAX = 20;
 
 setInterval(() => {
   const now = Date.now();

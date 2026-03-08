@@ -11,6 +11,26 @@ import { authMiddleware, lecturerOnly, AuthenticatedRequest } from '../auth';
 
 const router = Router();
 
+// Rate limiting for face registration: 3 attempts per IP per 5 minutes
+const FACE_REG_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const FACE_REG_RATE_LIMIT_MAX = 3;
+
+function checkFaceRegRateLimit(ip: string): boolean {
+  const key = `face_reg:${ip}`;
+  const now = new Date().toISOString();
+  const entry = db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').get(key) as { count: number; reset_at: string } | undefined;
+
+  if (!entry || new Date(entry.reset_at).getTime() <= Date.now()) {
+    const resetAt = new Date(Date.now() + FACE_REG_RATE_LIMIT_WINDOW_MS).toISOString();
+    db.prepare('INSERT OR REPLACE INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?)').run(key, resetAt);
+    return true;
+  }
+
+  const newCount = entry.count + 1;
+  db.prepare('UPDATE rate_limits SET count = ? WHERE key = ?').run(newCount, key);
+  return newCount <= FACE_REG_RATE_LIMIT_MAX;
+}
+
 const STUDENT_ID_REGEX = /^[a-zA-Z0-9_-]{1,50}$/;
 const POSE_LABELS = ['front', 'right', 'left'] as const;
 
@@ -29,17 +49,11 @@ function faceErrorMessage(code: string): string {
   }
 }
 
-// GET /api/face/status/:studentId — requires auth to prevent enumeration
-router.get('/status/:studentId', authMiddleware, (req: AuthenticatedRequest, res: Response): void => {
+// GET /api/face/status/:studentId — public (called pre-login to check if face registration is needed)
+router.get('/status/:studentId', (req: Request, res: Response): void => {
   const { studentId } = req.params;
   if (!STUDENT_ID_REGEX.test(studentId)) {
     res.status(400).json({ error: 'Invalid student ID format.' });
-    return;
-  }
-
-  // Students can only check their own status; lecturers can check any
-  if (req.user!.role === 'student' && req.user!.id !== studentId) {
-    res.status(403).json({ error: 'Access denied.' });
     return;
   }
 
@@ -58,8 +72,14 @@ router.get('/status/:studentId', authMiddleware, (req: AuthenticatedRequest, res
   }
 });
 
-// POST /api/face/register — requires auth so only the authenticated student can register their own face
-router.post('/register', authMiddleware, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+// POST /api/face/register — public (called pre-login during the face registration wizard)
+router.post('/register', async (req: Request, res: Response): Promise<void> => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  if (!checkFaceRegRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Terlalu banyak percobaan registrasi wajah. Coba lagi dalam beberapa menit.' });
+    return;
+  }
+
   if (!isModelReady()) {
     res.status(503).json({ error: faceErrorMessage('MODEL_NOT_READY') });
     return;
@@ -69,12 +89,6 @@ router.post('/register', authMiddleware, async (req: AuthenticatedRequest, res: 
 
   if (!studentId || !STUDENT_ID_REGEX.test(studentId)) {
     res.status(400).json({ error: 'Invalid student ID format.' });
-    return;
-  }
-
-  // Students can only register their own face; lecturers can register for any student
-  if (req.user!.role === 'student' && req.user!.id !== studentId) {
-    res.status(403).json({ error: 'Access denied. You can only register your own face.' });
     return;
   }
 
@@ -89,7 +103,8 @@ router.post('/register', authMiddleware, async (req: AuthenticatedRequest, res: 
   ).get(studentId) as { student_id: string; is_face_registered: number } | undefined;
 
   if (!student) {
-    db.prepare('INSERT INTO students (student_id, is_enrolled) VALUES (?, 0)').run(studentId);
+    const courseId = req.body.course_id === 'crypto' ? 'crypto' : 'infosec';
+    db.prepare('INSERT INTO students (student_id, is_enrolled, course_id) VALUES (?, 0, ?)').run(studentId, courseId);
     student = { student_id: studentId, is_face_registered: 0 };
   }
 
@@ -131,7 +146,7 @@ router.post('/register', authMiddleware, async (req: AuthenticatedRequest, res: 
       for (const d of descriptors) {
         insertStmt.run(studentId, JSON.stringify(d.descriptor), d.pose);
       }
-      db.prepare('UPDATE students SET is_face_registered = 1, is_enrolled = 1 WHERE student_id = ?').run(studentId);
+      db.prepare('UPDATE students SET is_face_registered = 1 WHERE student_id = ?').run(studentId);
     });
 
     transaction();

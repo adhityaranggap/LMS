@@ -46,23 +46,30 @@ function escapeCsvField(value: string): string {
 router.get('/students', (req: AuthenticatedRequest, res: Response): void => {
   const tenantId = (req as any).tenantId ?? 1;
   try {
+    const courseFilter = req.query.course as string | undefined;
+    const courseWhere = (courseFilter === 'infosec' || courseFilter === 'crypto') ? ' AND s.course_id = ?' : '';
+    const queryParams: (string | number)[] = [tenantId];
+    if (courseWhere) queryParams.push(courseFilter!);
+
     const students = db.prepare(`
       SELECT
         s.student_id,
         s.photo,
         s.created_at,
+        s.course_id,
         (SELECT MAX(ls.login_time) FROM login_sessions ls WHERE ls.student_id = s.student_id) as last_login,
         (SELECT COUNT(DISTINCT mv.module_id) FROM module_visits mv WHERE mv.student_id = s.student_id) as modules_visited,
         (SELECT COUNT(*) FROM quiz_attempts qa WHERE qa.student_id = s.student_id) as quiz_attempts,
         (SELECT ROUND(AVG(qa2.score), 1) FROM quiz_attempts qa2 WHERE qa2.student_id = s.student_id AND qa2.score IS NOT NULL) as avg_score
       FROM students s
-      WHERE s.tenant_id = ?
+      WHERE s.tenant_id = ?${courseWhere}
       ORDER BY s.created_at DESC
       LIMIT 500
-    `).all(tenantId) as {
+    `).all(...queryParams) as {
       student_id: string;
       photo: string | null;
       created_at: string;
+      course_id: string | null;
       last_login: string | null;
       modules_visited: number;
       quiz_attempts: number;
@@ -93,8 +100,8 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
   const tenantId = (req as any).tenantId ?? 1;
   try {
     const student = db.prepare(
-      'SELECT student_id, photo, created_at FROM students WHERE student_id = ? AND tenant_id = ?'
-    ).get(studentId, tenantId) as { student_id: string; photo: string | null; created_at: string } | undefined;
+      'SELECT student_id, photo, created_at, course_id FROM students WHERE student_id = ? AND tenant_id = ?'
+    ).get(studentId, tenantId) as { student_id: string; photo: string | null; created_at: string; course_id: string | null } | undefined;
 
     if (!student) {
       res.status(404).json({ error: 'Student not found.' });
@@ -103,33 +110,33 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
 
     // Login history
     const logins = db.prepare(
-      'SELECT login_time, photo FROM login_sessions WHERE student_id = ? ORDER BY login_time DESC LIMIT 20'
-    ).all(studentId);
+      'SELECT login_time, photo FROM login_sessions WHERE student_id = ? AND tenant_id = ? ORDER BY login_time DESC LIMIT 20'
+    ).all(studentId, tenantId);
 
     // Module visits
     const visits = db.prepare(
-      'SELECT DISTINCT module_id, tab FROM module_visits WHERE student_id = ? LIMIT 100'
-    ).all(studentId);
+      'SELECT module_id, tab, visited_at FROM module_visits WHERE student_id = ? AND tenant_id = ? ORDER BY visited_at DESC LIMIT 100'
+    ).all(studentId, tenantId);
 
     // Lab step completions
     const labSteps = db.prepare(
-      'SELECT module_id, step_index, completed_at FROM lab_step_completions WHERE student_id = ? LIMIT 100'
-    ).all(studentId);
+      'SELECT module_id, step_index, completed_at FROM lab_step_completions WHERE student_id = ? AND tenant_id = ? LIMIT 100'
+    ).all(studentId, tenantId);
 
     // Lab submissions
     const labSubs = db.prepare(
-      'SELECT module_id, file_name, notes, submitted_at FROM lab_submissions WHERE student_id = ? ORDER BY submitted_at DESC LIMIT 100'
-    ).all(studentId);
+      'SELECT module_id, file_name as file_url, notes, submitted_at FROM lab_submissions WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
+    ).all(studentId, tenantId);
 
     // Case study submissions
     const caseSubs = db.prepare(
-      'SELECT module_id, answers, submitted_at FROM case_study_submissions WHERE student_id = ? ORDER BY submitted_at DESC LIMIT 100'
-    ).all(studentId);
+      'SELECT module_id, answers, submitted_at FROM case_study_submissions WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
+    ).all(studentId, tenantId);
 
     // Quiz attempts with essay grades
     const quizAttempts = db.prepare(
-      'SELECT id, module_id, answers, score, mc_correct, mc_total, submitted_at FROM quiz_attempts WHERE student_id = ? ORDER BY submitted_at DESC LIMIT 100'
-    ).all(studentId) as {
+      'SELECT id, module_id, answers, score, mc_correct, mc_total, submitted_at FROM quiz_attempts WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
+    ).all(studentId, tenantId) as {
       id: number;
       module_id: number;
       answers: string;
@@ -193,6 +200,7 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
 
 // GET /api/lecturer/modules/stats
 router.get('/modules/stats', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
   try {
     const courseFilter = req.query.course as string | undefined;
     const stats = [];
@@ -212,20 +220,20 @@ router.get('/modules/stats', (req: AuthenticatedRequest, res: Response): void =>
       const course = moduleId >= 101 ? 'crypto' : 'infosec';
 
       const visitCount = db.prepare(
-        'SELECT COUNT(DISTINCT student_id) as count FROM module_visits WHERE module_id = ?'
-      ).get(moduleId) as { count: number };
+        'SELECT COUNT(DISTINCT mv.student_id) as count FROM module_visits mv INNER JOIN students s ON s.student_id = mv.student_id WHERE mv.module_id = ? AND s.tenant_id = ?'
+      ).get(moduleId, tenantId) as { count: number };
 
       const labSubCount = db.prepare(
-        'SELECT COUNT(DISTINCT student_id) as count FROM lab_submissions WHERE module_id = ?'
-      ).get(moduleId) as { count: number };
+        'SELECT COUNT(DISTINCT lb.student_id) as count FROM lab_submissions lb INNER JOIN students s ON s.student_id = lb.student_id WHERE lb.module_id = ? AND s.tenant_id = ?'
+      ).get(moduleId, tenantId) as { count: number };
 
       const caseSubCount = db.prepare(
-        'SELECT COUNT(DISTINCT student_id) as count FROM case_study_submissions WHERE module_id = ?'
-      ).get(moduleId) as { count: number };
+        'SELECT COUNT(DISTINCT cs.student_id) as count FROM case_study_submissions cs INNER JOIN students s ON s.student_id = cs.student_id WHERE cs.module_id = ? AND s.tenant_id = ?'
+      ).get(moduleId, tenantId) as { count: number };
 
       const quizStats = db.prepare(
-        'SELECT COUNT(DISTINCT student_id) as students, COUNT(*) as attempts, ROUND(AVG(score), 1) as avg_score FROM quiz_attempts WHERE module_id = ? AND score IS NOT NULL'
-      ).get(moduleId) as { students: number; attempts: number; avg_score: number | null };
+        'SELECT COUNT(DISTINCT qa.student_id) as students, COUNT(*) as attempts, ROUND(AVG(qa.score), 1) as avg_score FROM quiz_attempts qa INNER JOIN students s ON s.student_id = qa.student_id WHERE qa.module_id = ? AND s.tenant_id = ? AND qa.score IS NOT NULL'
+      ).get(moduleId, tenantId) as { students: number; attempts: number; avg_score: number | null };
 
       stats.push({
         moduleId,
@@ -287,8 +295,11 @@ router.post('/grade-essay', (req: AuthenticatedRequest, res: Response): void => 
     return;
   }
 
-  // Verify the quiz attempt exists
-  const attempt = db.prepare('SELECT id FROM quiz_attempts WHERE id = ?').get(quizAttemptId);
+  // Verify the quiz attempt exists and belongs to current tenant
+  const tenantId = (req as any).tenantId ?? 1;
+  const attempt = db.prepare(
+    'SELECT qa.id FROM quiz_attempts qa INNER JOIN students s ON s.student_id = qa.student_id WHERE qa.id = ? AND s.tenant_id = ?'
+  ).get(quizAttemptId, tenantId);
   if (!attempt) {
     res.status(404).json({ error: 'Quiz attempt not found.' });
     return;
@@ -416,15 +427,17 @@ router.get('/face-status', (req: AuthenticatedRequest, res: Response): void => {
 // GET /api/lecturer/face-mismatches
 router.get('/face-mismatches', (req: AuthenticatedRequest, res: Response): void => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+  const tenantId = (req as any).tenantId ?? 1;
 
   try {
     const logs = db.prepare(`
-      SELECT student_id, distance, matched, attempt_number, created_at
-      FROM face_verification_logs
-      WHERE matched = 0
-      ORDER BY created_at DESC
+      SELECT fvl.student_id, fvl.distance, fvl.matched, fvl.attempt_number, fvl.created_at
+      FROM face_verification_logs fvl
+      INNER JOIN students s ON s.student_id = fvl.student_id
+      WHERE fvl.matched = 0 AND s.tenant_id = ?
+      ORDER BY fvl.created_at DESC
       LIMIT ?
-    `).all(limit) as {
+    `).all(tenantId, limit) as {
       student_id: string;
       distance: number;
       matched: number;
@@ -594,11 +607,10 @@ router.get('/students/:studentId/sessions', (req: AuthenticatedRequest, res: Res
 
   try {
     const sessions = db.prepare(`
-      SELECT ls.id, ls.login_time, sdi.ip_address, sdi.user_agent, sdi.screen_width, sdi.screen_height, sdi.timezone, sdi.language, sdi.platform
-      FROM login_sessions ls
-      LEFT JOIN session_device_info sdi ON sdi.user_id = ls.student_id
-      WHERE ls.student_id = ?
-      ORDER BY ls.login_time DESC LIMIT 50
+      SELECT id, session_id, ip_address, user_agent, screen_width, screen_height, timezone, language, platform, created_at
+      FROM session_device_info
+      WHERE user_id = ?
+      ORDER BY created_at DESC LIMIT 50
     `).all(studentId);
 
     logAudit({
@@ -927,6 +939,118 @@ router.post('/accounts/:id/reset-password', requirePermission('manage_lecturers'
     res.json({ success: true });
   } catch (error) {
     console.error('Reset lecturer password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Scoreboard ---
+
+// GET /api/lecturer/scoreboard?period=daily|weekly|monthly&course=infosec|crypto&limit=50
+router.get('/scoreboard', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const period = req.query.period as string || 'weekly';
+  const courseFilter = req.query.course as string | undefined;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+  let dateFilter: string;
+  switch (period) {
+    case 'daily':
+      dateFilter = "datetime('now', '-1 day')";
+      break;
+    case 'monthly':
+      dateFilter = "datetime('now', '-30 days')";
+      break;
+    default: // weekly
+      dateFilter = "datetime('now', '-7 days')";
+      break;
+  }
+
+  const courseWhere = (courseFilter === 'infosec' || courseFilter === 'crypto') ? ' AND s.course_id = ?' : '';
+  const queryParams: (string | number)[] = [tenantId];
+  if (courseWhere) queryParams.push(courseFilter!);
+
+  try {
+    const scoreboard = db.prepare(`
+      SELECT
+        s.student_id,
+        s.course_id,
+        COALESCE((
+          SELECT ROUND(AVG(qa.score), 1)
+          FROM quiz_attempts qa
+          WHERE qa.student_id = s.student_id AND qa.score IS NOT NULL
+            AND qa.submitted_at >= ${dateFilter}
+        ), 0) as quiz_avg,
+        COALESCE((
+          SELECT COUNT(DISTINCT mv.module_id)
+          FROM module_visits mv
+          WHERE mv.student_id = s.student_id
+            AND mv.visited_at >= ${dateFilter}
+        ), 0) as modules_visited,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM lab_step_completions lsc
+          WHERE lsc.student_id = s.student_id
+            AND lsc.completed_at >= ${dateFilter}
+        ), 0) + COALESCE((
+          SELECT COUNT(*)
+          FROM lab_submissions ls2
+          WHERE ls2.student_id = s.student_id
+            AND ls2.submitted_at >= ${dateFilter}
+        ), 0) as lab_activity,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM login_sessions lsn
+          WHERE lsn.student_id = s.student_id
+            AND lsn.login_time >= ${dateFilter}
+        ), 0) as login_count,
+        COALESCE((
+          SELECT COUNT(*)
+          FROM case_study_submissions css
+          WHERE css.student_id = s.student_id
+            AND css.submitted_at >= ${dateFilter}
+        ), 0) as case_count
+      FROM students s
+      WHERE s.tenant_id = ? AND s.is_enrolled = 1${courseWhere}
+      ORDER BY s.student_id
+    `).all(...queryParams) as {
+      student_id: string;
+      course_id: string | null;
+      quiz_avg: number;
+      modules_visited: number;
+      lab_activity: number;
+      login_count: number;
+      case_count: number;
+    }[];
+
+    // Calculate composite score
+    const results = scoreboard.map(row => {
+      const totalModules = (row.course_id === 'crypto') ? 5 : 16;
+      const quizComponent = Math.min(row.quiz_avg, 100) * 0.4;
+      const moduleComponent = Math.min(row.modules_visited / totalModules, 1) * 100 * 0.2;
+      const labComponent = Math.min(row.lab_activity / 20, 1) * 100 * 0.2;
+      const loginComponent = Math.min(row.login_count / 10, 1) * 100 * 0.1;
+      const caseComponent = Math.min(row.case_count / 10, 1) * 100 * 0.1;
+      const composite_score = Math.round((quizComponent + moduleComponent + labComponent + loginComponent + caseComponent) * 10) / 10;
+
+      return {
+        student_id: row.student_id,
+        course_id: row.course_id,
+        quiz_avg: row.quiz_avg,
+        modules_visited: row.modules_visited,
+        lab_activity: row.lab_activity,
+        login_count: row.login_count,
+        case_count: row.case_count,
+        composite_score,
+      };
+    });
+
+    // Sort by composite score descending and add rank
+    results.sort((a, b) => b.composite_score - a.composite_score);
+    const ranked = results.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r }));
+
+    res.json({ scoreboard: ranked });
+  } catch (error) {
+    console.error('Scoreboard error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
