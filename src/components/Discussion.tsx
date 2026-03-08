@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { MessageCircle, Send, Trash2, ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -38,6 +39,7 @@ function formatRelativeTime(iso: string): string {
 
 export function Discussion({ moduleId }: { moduleId: number }) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,9 @@ export function Discussion({ moduleId }: { moduleId: number }) {
       });
       setNewPost('');
       fetchThreads();
-    } catch {}
+    } catch {
+      toast.error('Gagal mengirim diskusi');
+    }
     setPosting(false);
   };
 
@@ -85,14 +89,18 @@ export function Discussion({ moduleId }: { moduleId: number }) {
       setReplyContent(prev => ({ ...prev, [threadId]: '' }));
       loadReplies(threadId);
       fetchThreads();
-    } catch {}
+    } catch {
+      toast.error('Gagal mengirim balasan');
+    }
   };
 
   const loadReplies = async (threadId: number) => {
     try {
       const data = await api<{ replies: Reply[] }>(`/api/discussions/${moduleId}/${threadId}/replies`);
       setReplies(prev => ({ ...prev, [threadId]: data.replies }));
-    } catch {}
+    } catch {
+      toast.error('Gagal memuat balasan');
+    }
   };
 
   const toggleThread = (threadId: number) => {
@@ -108,7 +116,9 @@ export function Discussion({ moduleId }: { moduleId: number }) {
     try {
       await api(`/api/discussions/${postId}`, { method: 'DELETE' });
       fetchThreads();
-    } catch {}
+    } catch {
+      toast.error('Gagal menghapus diskusi');
+    }
   };
 
   const isLecturer = user?.role !== 'student';

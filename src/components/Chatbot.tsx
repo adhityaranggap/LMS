@@ -124,83 +124,38 @@ const SUGGESTED_CRYPTO = [
   'Bagaimana RSA menggunakan modular arithmetic?',
 ];
 
-// Exact quiz questions from syllabus — blocked by substring match
-const QUIZ_QUESTIONS = [
-  // Module 1
-  "apa kepanjangan dari CIA dalam konteks keamanan informasi",
-  "SOC Tier 1 Analyst memiliki tugas utama",
-  "sebutkan 7 tahap Cyber Kill Chain secara berurutan",
-  "apa perbedaan antara IDS dan IPS",
-  "apa keuntungan menggunakan MITRE ATT&CK framework dibandingkan Cyber Kill Chain",
-  // Module 2
-  "Event ID 4625 menunjukkan apa",
-  "apa perbedaan Kernel Mode dan User Mode di Windows",
-  "perintah apa yang digunakan untuk melihat koneksi jaringan aktif di Windows",
-  "apa fungsi UAC",
-  "mengapa PowerShell sering digunakan dalam serangan",
-  // Module 3
-  "sebutkan 7 layer model OSI secara berurutan",
-  "apa perbedaan utama antara MAC address dan IP address",
-  "bagaimana urutan proses enkapsulasi data dari Application layer ke Physical layer",
-  "apa salah satu keunggulan utama IPv6 dibandingkan IPv4",
-  "apa fungsi utama dari default gateway",
-  // Module 4
-  "apa fungsi utama ICMP dalam jaringan",
-  "jelaskan perbedaan antara ping dan traceroute",
-  "apa yang dimaksud dengan ARP Spoofing",
-  "bagaimana Dynamic ARP Inspection",
-  "mengapa ICMP sering digunakan dalam fase reconnaissance",
-  // Module 5
-  "jelaskan proses TCP three-way handshake",
-  "apa perbedaan utama antara TCP dan UDP",
-  "sebutkan proses DHCP DORA",
-  "apa perbedaan antara DNS record type A dan CNAME",
-  "mengapa NAT penting untuk keamanan jaringan",
-  // Module 6
-  "sebutkan 4 jenis threat actor",
-  "apa perbedaan virus, worm, dan trojan",
-  "jelaskan SYN Flood attack",
-  "apa itu DMZ",
-  // Module 7
-  "perbedaan passive vs active monitoring",
-  "jelaskan DNS Amplification attack",
-  "apa itu TCP Session Hijacking",
-  "sebutkan 3 kerentanan DHCP",
-  "fungsi SPAN port",
-  // Module 8
-  "jelaskan konsep Defense-in-Depth",
-  "perbedaan RBAC dan ABAC",
-  "3 komponen AAA",
-  "perbedaan RADIUS dan TACACS+",
-  "prinsip Zero Trust",
-  // Module 9
-  "apa itu IoC? berikan contoh",
-  "perbedaan Symmetric vs Asymmetric",
-  "fungsi Digital Signature",
-  "peran CA dalam PKI",
-  "mengapa MD5 tidak aman",
-  // Module 10
-  "signature vs behavioral detection",
-  "komponen CVSS Base Score",
-  "apa itu HIPS",
-  "proses Vulnerability Assessment",
-  "VA vs Pentest",
-  // Module 11
-  "5 jenis security data",
-  "dampak enkripsi pada monitoring",
-  "full packet capture vs flow data",
-  "fungsi SIEM",
-  // Module 12
-  "TP vs FP",
-  "langkah alert triage",
-  "mengatasi alert fatigue",
-  "6 fase IR Lifecycle",
-  "isi security incident report",
-];
+// Quiz questions loaded dynamically from course data to avoid hardcoding
+let cachedQuizQuestions: string[] | null = null;
+
+async function loadQuizQuestions(): Promise<string[]> {
+  if (cachedQuizQuestions) return cachedQuizQuestions;
+  try {
+    const [infosecMod, cryptoMod] = await Promise.all([
+      import('../data/syllabus-data').then(m => m.syllabusData),
+      import('../data/crypto-syllabus-data').then(m => m.cryptoSyllabusData),
+    ]);
+    const questions: string[] = [];
+    for (const mod of [...infosecMod, ...cryptoMod]) {
+      if (mod.quiz) {
+        for (const q of mod.quiz) {
+          questions.push(q.question.toLowerCase());
+        }
+      }
+    }
+    cachedQuizQuestions = questions;
+    return questions;
+  } catch {
+    return [];
+  }
+}
+
+// Pre-load on module init
+loadQuizQuestions();
 
 function isQuizQuestion(text: string): boolean {
+  if (!cachedQuizQuestions) return false;
   const normalized = text.toLowerCase().trim();
-  return QUIZ_QUESTIONS.some(q => normalized.includes(q.toLowerCase()));
+  return cachedQuizQuestions.some(q => normalized.includes(q));
 }
 
 // Patterns that explicitly ask for direct assignment/quiz/case study answers.

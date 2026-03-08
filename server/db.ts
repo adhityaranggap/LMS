@@ -350,6 +350,75 @@ function migrateIfNeeded() {
     db.exec("ALTER TABLE students ADD COLUMN course_id TEXT DEFAULT 'infosec'");
   }
 
+  // Phase 5: Student biodata columns
+  const studentBiodataCols = db.pragma('table_info(students)') as { name: string }[];
+  const biodataColumns: [string, string][] = [
+    ['full_name', 'TEXT'],
+    ['email', 'TEXT'],
+    ['phone', 'TEXT'],
+    ['address', 'TEXT'],
+    ['birth_date', 'TEXT'],
+    ['gender', 'TEXT'],
+    ['program_studi', 'TEXT'],
+    ['semester', 'INTEGER'],
+    ['angkatan', 'TEXT'],
+    ['profile_photo', 'TEXT'],
+  ];
+  for (const [col, type] of biodataColumns) {
+    if (!studentBiodataCols.find(c => c.name === col)) {
+      db.exec(`ALTER TABLE students ADD COLUMN ${col} ${type}`);
+    }
+  }
+
+  // Phase 6: module_content_overrides tenant isolation
+  const overrideCols = db.pragma('table_info(module_content_overrides)') as { name: string }[];
+  if (!overrideCols.find(c => c.name === 'tenant_id')) {
+    db.exec('ALTER TABLE module_content_overrides ADD COLUMN tenant_id INTEGER DEFAULT 1');
+  }
+
+  // Phase 6: Custom modules table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_modules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL DEFAULT 1,
+      course_id TEXT NOT NULL,
+      module_number INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      theory TEXT,
+      lab TEXT,
+      case_study TEXT,
+      quiz TEXT,
+      video_resources TEXT,
+      is_published INTEGER DEFAULT 0,
+      created_by INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, course_id, module_number)
+    )
+  `);
+
+  // Phase 6: Tenant courses table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_courses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL DEFAULT 1,
+      course_id TEXT NOT NULL,
+      course_name TEXT NOT NULL,
+      description TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(tenant_id, course_id)
+    )
+  `);
+
+  // Seed default courses if empty
+  const courseCount = db.prepare('SELECT COUNT(*) as c FROM tenant_courses').get() as { c: number };
+  if (courseCount.c === 0) {
+    db.prepare("INSERT OR IGNORE INTO tenant_courses (tenant_id, course_id, course_name, description) VALUES (1, 'infosec', 'Pengujian Keamanan Informasi', 'Information Security Testing course')").run();
+    db.prepare("INSERT OR IGNORE INTO tenant_courses (tenant_id, course_id, course_name, description) VALUES (1, 'crypto', 'Kriptografi', 'Cryptography course')").run();
+  }
+
   // Add tokens_invalidated_at to lecturers for session invalidation on password change
   const lecturerCols2 = db.pragma('table_info(lecturers)') as { name: string }[];
   if (!lecturerCols2.find(c => c.name === 'tokens_invalidated_at')) {
@@ -390,6 +459,10 @@ function migrateIfNeeded() {
     CREATE INDEX IF NOT EXISTS idx_revoked_tokens_hash ON revoked_tokens(token_hash);
     CREATE INDEX IF NOT EXISTS idx_essay_grades_attempt ON essay_grades(quiz_attempt_id);
     CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);
+    CREATE INDEX IF NOT EXISTS idx_students_name ON students(full_name);
+    CREATE INDEX IF NOT EXISTS idx_module_overrides_tenant ON module_content_overrides(tenant_id, module_id);
+    CREATE INDEX IF NOT EXISTS idx_custom_modules_tenant ON custom_modules(tenant_id, course_id);
+    CREATE INDEX IF NOT EXISTS idx_tenant_courses_tenant ON tenant_courses(tenant_id);
   `);
 
   // Add manage_lecturers permission and assign to lecturer role

@@ -100,41 +100,38 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
 
   const tenantId = (req as any).tenantId ?? 1;
   try {
+    // Query 1: Student info + login sessions (JOIN)
     const student = db.prepare(
-      'SELECT student_id, photo, created_at, course_id FROM students WHERE student_id = ? AND tenant_id = ?'
-    ).get(studentId, tenantId) as { student_id: string; photo: string | null; created_at: string; course_id: string | null } | undefined;
+      'SELECT student_id, photo, created_at, course_id, full_name, email, phone, program_studi, semester, angkatan FROM students WHERE student_id = ? AND tenant_id = ?'
+    ).get(studentId, tenantId) as { student_id: string; photo: string | null; created_at: string; course_id: string | null; full_name: string | null; email: string | null; phone: string | null; program_studi: string | null; semester: number | null; angkatan: string | null } | undefined;
 
     if (!student) {
       res.status(404).json({ error: 'Student not found.' });
       return;
     }
 
-    // Login history
     const logins = db.prepare(
       'SELECT login_time, photo FROM login_sessions WHERE student_id = ? AND tenant_id = ? ORDER BY login_time DESC LIMIT 20'
     ).all(studentId, tenantId);
 
-    // Module visits
+    // Query 2: All activity data in parallel (already indexed)
     const visits = db.prepare(
       'SELECT module_id, tab, visited_at FROM module_visits WHERE student_id = ? AND tenant_id = ? ORDER BY visited_at DESC LIMIT 100'
     ).all(studentId, tenantId);
 
-    // Lab step completions
     const labSteps = db.prepare(
       'SELECT module_id, step_index, completed_at FROM lab_step_completions WHERE student_id = ? AND tenant_id = ? LIMIT 100'
     ).all(studentId, tenantId);
 
-    // Lab submissions
     const labSubs = db.prepare(
       'SELECT module_id, file_name as file_url, notes, submitted_at FROM lab_submissions WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
     ).all(studentId, tenantId);
 
-    // Case study submissions
     const caseSubs = db.prepare(
       'SELECT module_id, answers, submitted_at FROM case_study_submissions WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
     ).all(studentId, tenantId);
 
-    // Quiz attempts with essay grades
+    // Quiz attempts with essay grades — batch load grades instead of N+1
     const quizAttempts = db.prepare(
       'SELECT id, module_id, answers, score, mc_correct, mc_total, submitted_at FROM quiz_attempts WHERE student_id = ? AND tenant_id = ? ORDER BY submitted_at DESC LIMIT 100'
     ).all(studentId, tenantId) as {
@@ -147,22 +144,35 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
       submitted_at: string;
     }[];
 
-    const attemptsWithGrades = quizAttempts.map((attempt) => {
-      const grades = db.prepare(
-        'SELECT question_id, grade, feedback, graded_by, graded_at FROM essay_grades WHERE quiz_attempt_id = ?'
-      ).all(attempt.id);
+    // Batch load all essay grades for these attempts in one query
+    const attemptIds = quizAttempts.map(a => a.id);
+    let allGrades: { quiz_attempt_id: number; question_id: number; grade: number | null; feedback: string | null; graded_by: string | null; graded_at: string | null }[] = [];
+    if (attemptIds.length > 0) {
+      const placeholders = attemptIds.map(() => '?').join(',');
+      allGrades = db.prepare(
+        `SELECT quiz_attempt_id, question_id, grade, feedback, graded_by, graded_at FROM essay_grades WHERE quiz_attempt_id IN (${placeholders})`
+      ).all(...attemptIds) as typeof allGrades;
+    }
 
+    // Group grades by attempt ID
+    const gradesByAttempt = new Map<number, typeof allGrades>();
+    for (const g of allGrades) {
+      const list = gradesByAttempt.get(g.quiz_attempt_id) ?? [];
+      list.push(g);
+      gradesByAttempt.set(g.quiz_attempt_id, list);
+    }
+
+    const attemptsWithGrades = quizAttempts.map((attempt) => {
       let parsedAnswers: Record<string, string>;
       try {
         parsedAnswers = JSON.parse(attempt.answers);
       } catch {
         parsedAnswers = {};
       }
-
       return {
         ...attempt,
         answers: parsedAnswers,
-        essayGrades: grades,
+        essayGrades: gradesByAttempt.get(attempt.id) ?? [],
       };
     });
 
@@ -1053,6 +1063,266 @@ router.get('/scoreboard', (req: AuthenticatedRequest, res: Response): void => {
   } catch (error) {
     logger.error('Scoreboard error', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Bulk Student Import (CSV) ---
+router.post('/students/import', requirePermission('manage_enrollment'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const { rows } = req.body;
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: 'rows must be a non-empty array' });
+    return;
+  }
+
+  if (rows.length > 500) {
+    res.status(400).json({ error: 'Maximum 500 rows per import' });
+    return;
+  }
+
+  const results = { enrolled: 0, skipped: 0, errors: [] as string[] };
+
+  const insertStmt = db.prepare(`
+    INSERT INTO students (student_id, full_name, email, program_studi, semester, angkatan, course_id, is_enrolled, tenant_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+    ON CONFLICT(student_id) DO UPDATE SET
+      full_name = COALESCE(excluded.full_name, students.full_name),
+      email = COALESCE(excluded.email, students.email),
+      program_studi = COALESCE(excluded.program_studi, students.program_studi),
+      semester = COALESCE(excluded.semester, students.semester),
+      angkatan = COALESCE(excluded.angkatan, students.angkatan),
+      is_enrolled = 1
+  `);
+
+  const importAll = db.transaction(() => {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const nim = String(row.nim || row.NIM || '').trim();
+      if (!nim || !STUDENT_ID_REGEX.test(nim)) {
+        results.errors.push(`Baris ${i + 1}: NIM tidak valid "${nim}"`);
+        continue;
+      }
+
+      try {
+        const existing = db.prepare('SELECT student_id FROM students WHERE student_id = ? AND tenant_id = ?').get(nim, tenantId);
+        insertStmt.run(
+          nim,
+          sanitizeString(row.nama || row.full_name, 200) || null,
+          sanitizeString(row.email, 200) || null,
+          sanitizeString(row.program_studi, 200) || null,
+          row.semester ? Number(row.semester) : null,
+          sanitizeString(row.angkatan, 10) || null,
+          row.course_id || 'infosec',
+          tenantId
+        );
+        if (existing) {
+          results.skipped++;
+        } else {
+          results.enrolled++;
+        }
+      } catch (err) {
+        results.errors.push(`Baris ${i + 1}: ${String(err)}`);
+      }
+    }
+  });
+
+  try {
+    importAll();
+    logAudit({
+      user_id: req.user!.id,
+      user_type: 'lecturer',
+      action: 'bulk_import_students',
+      resource_type: 'student',
+      details: { enrolled: results.enrolled, skipped: results.skipped, errors: results.errors.length },
+      ip_address: req.ip || req.socket.remoteAddress || 'unknown',
+      user_agent: req.headers['user-agent'] || '',
+    });
+    res.json(results);
+  } catch (error) {
+    logger.error('Bulk import error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Custom Modules ---
+
+// POST /api/lecturer/modules — create new custom module
+router.post('/modules', requirePermission('manage_content'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const { title, description, course_id } = req.body;
+
+  if (!title || typeof title !== 'string' || title.trim().length === 0) {
+    res.status(400).json({ error: 'Title is required' });
+    return;
+  }
+  if (!course_id || typeof course_id !== 'string') {
+    res.status(400).json({ error: 'course_id is required' });
+    return;
+  }
+
+  try {
+    // Auto-assign module_number
+    const max = db.prepare(
+      'SELECT COALESCE(MAX(module_number), 0) as max_num FROM custom_modules WHERE tenant_id = ? AND course_id = ?'
+    ).get(tenantId, course_id) as { max_num: number };
+
+    // Custom modules start at 1001 for infosec, 2001 for crypto
+    const baseNumber = course_id === 'crypto' ? 2001 : 1001;
+    const nextNumber = Math.max(max.max_num + 1, baseNumber);
+
+    const result = db.prepare(`
+      INSERT INTO custom_modules (tenant_id, course_id, module_number, title, description, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(tenantId, course_id, nextNumber, title.trim(), description?.trim() || null, req.user!.id);
+
+    res.json({ id: result.lastInsertRowid, module_number: nextNumber });
+  } catch (error) {
+    logger.error('Create custom module error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/lecturer/modules/:id — update custom module
+router.put('/modules/:id', requirePermission('manage_content'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const moduleId = Number(req.params.id);
+
+  if (!Number.isInteger(moduleId)) {
+    res.status(400).json({ error: 'Invalid module ID' });
+    return;
+  }
+
+  try {
+    const existing = db.prepare('SELECT id FROM custom_modules WHERE id = ? AND tenant_id = ?').get(moduleId, tenantId);
+    if (!existing) {
+      res.status(404).json({ error: 'Custom module not found' });
+      return;
+    }
+
+    const { title, description, theory, lab, case_study, quiz, video_resources } = req.body;
+    const fields: string[] = [];
+    const values: unknown[] = [];
+
+    if (title !== undefined) { fields.push('title = ?'); values.push(title); }
+    if (description !== undefined) { fields.push('description = ?'); values.push(description); }
+    if (theory !== undefined) { fields.push('theory = ?'); values.push(typeof theory === 'string' ? theory : JSON.stringify(theory)); }
+    if (lab !== undefined) { fields.push('lab = ?'); values.push(typeof lab === 'string' ? lab : JSON.stringify(lab)); }
+    if (case_study !== undefined) { fields.push('case_study = ?'); values.push(typeof case_study === 'string' ? case_study : JSON.stringify(case_study)); }
+    if (quiz !== undefined) { fields.push('quiz = ?'); values.push(typeof quiz === 'string' ? quiz : JSON.stringify(quiz)); }
+    if (video_resources !== undefined) { fields.push('video_resources = ?'); values.push(typeof video_resources === 'string' ? video_resources : JSON.stringify(video_resources)); }
+
+    if (fields.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+
+    fields.push("updated_at = datetime('now')");
+    values.push(moduleId, tenantId);
+
+    db.prepare(`UPDATE custom_modules SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Update custom module error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/lecturer/modules/:id/publish — toggle publish
+router.put('/modules/:id/publish', requirePermission('manage_content'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const moduleId = Number(req.params.id);
+
+  try {
+    const mod = db.prepare('SELECT is_published FROM custom_modules WHERE id = ? AND tenant_id = ?').get(moduleId, tenantId) as { is_published: number } | undefined;
+    if (!mod) {
+      res.status(404).json({ error: 'Custom module not found' });
+      return;
+    }
+
+    const newStatus = mod.is_published ? 0 : 1;
+    db.prepare('UPDATE custom_modules SET is_published = ? WHERE id = ? AND tenant_id = ?').run(newStatus, moduleId, tenantId);
+    res.json({ is_published: newStatus });
+  } catch (error) {
+    logger.error('Publish module error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/lecturer/modules/:id
+router.delete('/modules/:id', requirePermission('manage_content'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const moduleId = Number(req.params.id);
+
+  try {
+    const result = db.prepare('DELETE FROM custom_modules WHERE id = ? AND tenant_id = ?').run(moduleId, tenantId);
+    if (result.changes === 0) {
+      res.status(404).json({ error: 'Custom module not found' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Delete custom module error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/lecturer/modules — list custom modules for tenant
+router.get('/modules', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  try {
+    const courseFilter = req.query.course as string | undefined;
+    let query = 'SELECT * FROM custom_modules WHERE tenant_id = ?';
+    const params: (string | number)[] = [tenantId];
+    if (courseFilter) {
+      query += ' AND course_id = ?';
+      params.push(courseFilter);
+    }
+    query += ' ORDER BY module_number';
+    const modules = db.prepare(query).all(...params);
+    res.json({ modules });
+  } catch (error) {
+    logger.error('List custom modules error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// --- Tenant Courses ---
+
+// GET /api/lecturer/courses
+router.get('/courses', (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  try {
+    const courses = db.prepare('SELECT * FROM tenant_courses WHERE tenant_id = ? ORDER BY course_id').all(tenantId);
+    res.json({ courses });
+  } catch (error) {
+    logger.error('List courses error', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/lecturer/courses — create new course
+router.post('/courses', requirePermission('manage_content'), (req: AuthenticatedRequest, res: Response): void => {
+  const tenantId = (req as any).tenantId ?? 1;
+  const { course_id, course_name, description } = req.body;
+
+  if (!course_id || !course_name) {
+    res.status(400).json({ error: 'course_id and course_name are required' });
+    return;
+  }
+
+  try {
+    db.prepare(
+      'INSERT INTO tenant_courses (tenant_id, course_id, course_name, description) VALUES (?, ?, ?, ?)'
+    ).run(tenantId, course_id, course_name, description || null);
+    res.json({ success: true });
+  } catch (error) {
+    if (String(error).includes('UNIQUE')) {
+      res.status(409).json({ error: 'Course ID already exists' });
+    } else {
+      logger.error('Create course error', { error: String(error) });
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 

@@ -11,6 +11,7 @@ import { useModuleContent } from '../hooks/useModuleContent';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { useAntiCheat } from '../hooks/useAntiCheat';
+import { useToast } from '../context/ToastContext';
 import clsx from 'clsx';
 import { useChatbot } from '../context/ChatbotContext';
 import { Discussion } from '../components/Discussion';
@@ -20,6 +21,7 @@ export const ModuleDetail = () => {
   const { module, loading } = useModuleContent(Number(id));
   const { openChat } = useChatbot();
   const { course } = useAuth();
+  const { toast } = useToast();
   const { getAntiCheatData: getCaseAntiCheatData } = useAntiCheat();
   const isCrypto = course === 'crypto';
   const [activeTab, setActiveTab] = useState<'theory' | 'lab' | 'case' | 'quiz' | 'videos' | 'interactive' | 'discussion'>('theory');
@@ -28,6 +30,7 @@ export const ModuleDetail = () => {
   const [labNotes, setLabNotes] = useState('');
   const [caseAnswers, setCaseAnswers] = useState<Record<number, string>>({});
   const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const prevTab = useRef(activeTab);
 
   const moduleId = Number(id) || 0;
@@ -40,6 +43,7 @@ export const ModuleDetail = () => {
     if (Object.keys(caseAnswers).length === 0 || caseSubmission) return;
     const interval = setInterval(() => {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(caseAnswers));
+      setDraftSavedAt(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
     }, 30000);
     return () => clearInterval(interval);
   }, [caseAnswers, DRAFT_KEY, caseSubmission]);
@@ -80,6 +84,17 @@ export const ModuleDetail = () => {
       } catch {}
     }
   }, [caseSubmission]);
+
+  // Warn on unsaved changes before leaving page
+  useEffect(() => {
+    const hasUnsavedCase = !caseSubmission && Object.keys(caseAnswers).some(k => caseAnswers[Number(k)]?.trim());
+    if (!hasUnsavedCase) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [caseAnswers, caseSubmission]);
 
   if (loading) {
     return (
@@ -130,7 +145,10 @@ export const ModuleDetail = () => {
         body: JSON.stringify({ moduleId: module.id, fileName: labFileName, notes: labNotes }),
       });
       setLabSubmitted(true);
-    } catch {}
+      toast.success('Lab berhasil dikirim!');
+    } catch {
+      toast.error('Gagal mengirim lab');
+    }
   };
 
   const handleCaseSubmit = async (e: React.FormEvent) => {
@@ -142,7 +160,10 @@ export const ModuleDetail = () => {
         body: JSON.stringify({ moduleId: module.id, answers: JSON.stringify(caseAnswers), antiCheatData }),
       });
       localStorage.removeItem(DRAFT_KEY);
-    } catch {}
+      toast.success('Studi kasus berhasil dikirim!');
+    } catch {
+      toast.error('Gagal mengirim studi kasus');
+    }
   };
 
   const caseAlreadySubmitted = !!caseSubmission;
@@ -441,10 +462,21 @@ export const ModuleDetail = () => {
                   <span className="font-medium">Case study analysis submitted successfully!</span>
                 </div>
               ) : (
-                <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-medium hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20">
-                  <Send className="w-4 h-4" />
-                  Submit Analysis
-                </button>
+                <div className="space-y-2">
+                  {draftSavedAt && (
+                    <p className="text-xs text-slate-400 text-right">Draft tersimpan {draftSavedAt}</p>
+                  )}
+                  {draftRestored && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-sm text-amber-700 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      Draft sebelumnya dipulihkan
+                    </div>
+                  )}
+                  <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-medium hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20">
+                    <Send className="w-4 h-4" />
+                    Submit Analysis
+                  </button>
+                </div>
               )}
             </form>
           </div>

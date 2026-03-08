@@ -9,6 +9,7 @@ const ModuleDetail = React.lazy(() => import('./pages/ModuleDetail').then(m => (
 const LecturerDashboard = React.lazy(() => import('./pages/LecturerDashboard').then(m => ({ default: m.LecturerDashboard })));
 const LecturerStudentDetail = React.lazy(() => import('./pages/LecturerStudentDetail').then(m => ({ default: m.LecturerStudentDetail })));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard').then(m => ({ default: m.SuperAdminDashboard })));
+const StudentProfile = React.lazy(() => import('./pages/StudentProfile').then(m => ({ default: m.StudentProfile })));
 
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -43,7 +44,7 @@ const SuperAdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   if (loading) return <LoadingSpinner />;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'super_admin' && user.role !== 'lecturer') return <Navigate to="/" replace />;
+  if (user.role !== 'super_admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 };
 
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/login" element={<LoginRoute />} />
           <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
           <Route path="/module/:id" element={<ProtectedRoute><ModuleDetail /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><StudentProfile /></ProtectedRoute>} />
           <Route path="/lecturer" element={<LecturerRoute><LecturerDashboard /></LecturerRoute>} />
           <Route path="/lecturer/student/:studentId" element={<LecturerRoute><LecturerStudentDetail /></LecturerRoute>} />
           <Route path="/admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />

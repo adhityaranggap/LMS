@@ -249,6 +249,7 @@ export const Quiz: React.FC<QuizProps> = ({ questions, moduleId }) => {
                       onChange={(e) => handleTextChange(q.id, e.target.value)}
                       disabled={isSubmitted}
                       placeholder="Type your answer here..."
+                      aria-label={`Jawaban untuk pertanyaan ${q.id}`}
                       className="w-full p-4 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all min-h-[120px] disabled:bg-slate-50 disabled:text-slate-600"
                       required
                     />

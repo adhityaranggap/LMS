@@ -3,7 +3,8 @@ import { Request, Response, NextFunction } from 'express';
 import db from './db';
 import { logger } from './services/logger';
 
-const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const TOKEN_EXPIRY_MS = 8 * 60 * 60 * 1000; // 8 hours
+const TOKEN_REFRESH_WINDOW_MS = 2 * 60 * 60 * 1000; // refresh if within last 2 hours
 export const AUTH_COOKIE_NAME = 'auth_token';
 
 function getJwtSecret(): string {
@@ -183,8 +184,7 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
       const lecturer = db.prepare('SELECT tokens_invalidated_at FROM lecturers WHERE id = ?').get(Number(payload.id)) as { tokens_invalidated_at: string | null } | undefined;
       if (lecturer?.tokens_invalidated_at) {
         const invalidatedAt = new Date(lecturer.tokens_invalidated_at).getTime();
-        // Token was issued before invalidation (exp - 24h = issue time approximately)
-        const tokenIssuedAt = payload.exp - 24 * 60 * 60 * 1000;
+        const tokenIssuedAt = payload.exp - TOKEN_EXPIRY_MS;
         if (tokenIssuedAt < invalidatedAt) {
           res.status(401).json({ error: 'Session invalidated. Please log in again.' });
           return;
@@ -193,6 +193,19 @@ export function authMiddleware(req: AuthenticatedRequest, res: Response, next: N
     } catch {
       // Column may not exist yet
     }
+  }
+
+  // Sliding window: refresh token if within last 2 hours of expiry
+  const timeUntilExpiry = payload.exp - Date.now();
+  if (timeUntilExpiry > 0 && timeUntilExpiry < TOKEN_REFRESH_WINDOW_MS) {
+    const newToken = generateToken(payload.id, payload.role, payload.course, payload.tenant_id);
+    res.cookie(AUTH_COOKIE_NAME, newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: TOKEN_EXPIRY_MS,
+      path: '/',
+    });
   }
 
   // Load permissions from cache or user_roles + role_permissions
@@ -239,13 +252,24 @@ export function studentOnly(req: AuthenticatedRequest, res: Response, next: Next
   next();
 }
 
-// Permission cache with 5-minute TTL
+// Permission cache with 5-minute TTL, max 1000 entries
 const permCache = new Map<string, { perms: string[]; exp: number }>();
 const PERM_CACHE_TTL_MS = 5 * 60 * 1000;
+const PERM_CACHE_MAX_SIZE = 1000;
 
 export function clearPermissionCache(): void {
   permCache.clear();
 }
+
+function evictExpiredPermissions(): void {
+  const now = Date.now();
+  for (const [key, val] of permCache) {
+    if (val.exp < now) permCache.delete(key);
+  }
+}
+
+// Periodic cleanup every 10 minutes
+setInterval(evictExpiredPermissions, 10 * 60 * 1000);
 
 function getCachedPermissions(userId: string, userType: string): string[] | null {
   const key = `${userId}:${userType}`;
@@ -256,6 +280,11 @@ function getCachedPermissions(userId: string, userType: string): string[] | null
 }
 
 function setCachedPermissions(userId: string, userType: string, perms: string[]): void {
+  // LRU eviction: if cache is full, remove oldest entry
+  if (permCache.size >= PERM_CACHE_MAX_SIZE) {
+    const firstKey = permCache.keys().next().value;
+    if (firstKey) permCache.delete(firstKey);
+  }
   permCache.set(`${userId}:${userType}`, { perms, exp: Date.now() + PERM_CACHE_TTL_MS });
 }
 

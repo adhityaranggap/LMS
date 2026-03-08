@@ -149,7 +149,7 @@ export const LecturerDashboard: React.FC = () => {
   const fetchLecturerAccounts = useCallback(() => {
     api<{ lecturers: LecturerAccount[] }>('/api/lecturer/accounts')
       .then(d => setLecturerAccounts(d.lecturers))
-      .catch(() => {});
+      .catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {

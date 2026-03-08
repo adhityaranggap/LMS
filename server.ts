@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 import path from 'path';
+import crypto from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
 import db from './server/db';
 import { logger } from './server/services/logger';
@@ -16,6 +17,7 @@ import tenantRoutes from './server/routes/tenant.routes';
 import deadlineRoutes from './server/routes/deadline.routes';
 import discussionRoutes from './server/routes/discussion.routes';
 import notificationRoutes from './server/routes/notification.routes';
+import studentRoutes from './server/routes/student.routes';
 import { csrfProtection } from './server/middleware/csrf';
 import { seedDefaultLecturer, seedRolesAndPermissions } from './server/seed';
 import { cleanupRevokedTokens } from './server/auth';
@@ -66,6 +68,14 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:3000';
 // --- Trust proxy for correct req.ip behind reverse proxy ---
 app.set('trust proxy', 1);
 
+// --- Request ID tracing ---
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const requestId = crypto.randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  next();
+});
+
 // --- CORS: restricted to localhost:3000 (manual, no extra dep) ---
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
@@ -113,6 +123,7 @@ app.use('/api/tenants', tenantRoutes);
 app.use('/api/deadlines', deadlineRoutes);
 app.use('/api/discussions', discussionRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/student', studentRoutes);
 
 // --- Health check ---
 app.get('/api/health', (_req: Request, res: Response) => {

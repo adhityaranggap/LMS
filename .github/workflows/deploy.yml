@@ -67,7 +67,8 @@ jobs:
               echo ">> Pulling latest code..."
               cd "$APP_DIR"
               git fetch origin
-              git reset --hard origin/main
+              git checkout main
+              git pull --ff-only origin main
             fi
 
             cd "$APP_DIR"

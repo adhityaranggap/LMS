@@ -13,4 +13,11 @@
   --color-indigo-800: #166534;
   --color-indigo-900: #14532d;
   --color-indigo-950: #052e16;
+
+  /* Design system tokens */
+  --radius-card: 1rem;
+  --radius-button: 0.5rem;
+  --radius-input: 0.5rem;
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-card-hover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }

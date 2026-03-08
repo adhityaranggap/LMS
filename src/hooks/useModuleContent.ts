@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { syllabusData } from '../data/syllabus-data';
-import { cryptoSyllabusData } from '../data/crypto-syllabus-data';
 import type { ModuleData } from '../data/syllabus-data';
 import { api } from '../lib/api';
 
@@ -30,39 +28,61 @@ function deepMerge<T extends object>(base: T, override: DeepPartial<T>): T {
   return result;
 }
 
-const allModulesData = [...syllabusData, ...cryptoSyllabusData];
+// Lazy-load course data on demand (code splitting)
+let cachedSyllabusData: ModuleData[] | null = null;
+let cachedCryptoData: ModuleData[] | null = null;
+
+async function loadCourseData(moduleId: number): Promise<ModuleData | null> {
+  const isCrypto = moduleId >= 100;
+  if (isCrypto) {
+    if (!cachedCryptoData) {
+      const mod = await import('../data/crypto-syllabus-data');
+      cachedCryptoData = mod.cryptoSyllabusData;
+    }
+    return cachedCryptoData.find(m => m.id === moduleId) ?? null;
+  } else {
+    if (!cachedSyllabusData) {
+      const mod = await import('../data/syllabus-data');
+      cachedSyllabusData = mod.syllabusData;
+    }
+    return cachedSyllabusData.find(m => m.id === moduleId) ?? null;
+  }
+}
 
 export function useModuleContent(moduleId: number): { module: ModuleData | null; loading: boolean } {
-  const base = allModulesData.find(m => m.id === moduleId) ?? null;
-  const [module, setModule] = useState<ModuleData | null>(base);
+  const [module, setModule] = useState<ModuleData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!base) {
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
 
-    api<{ override: DeepPartial<ModuleData> | null }>(`/api/content/${moduleId}`)
-      .then(data => {
+    (async () => {
+      try {
+        const base = await loadCourseData(moduleId);
         if (cancelled) return;
-        if (data.override) {
-          setModule(deepMerge(base, data.override));
-        } else {
-          setModule(base);
+
+        if (!base) {
+          setModule(null);
+          setLoading(false);
+          return;
         }
-      })
-      .catch(() => {
-        if (!cancelled) setModule(base);
-      })
-      .finally(() => {
+
+        // Try to load content override
+        try {
+          const data = await api<{ override: DeepPartial<ModuleData> | null }>(`/api/content/${moduleId}`);
+          if (cancelled) return;
+          setModule(data.override ? deepMerge(base, data.override) : base);
+        } catch {
+          if (!cancelled) setModule(base);
+        }
+      } catch {
+        if (!cancelled) setModule(null);
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId]);
 
   return { module, loading };

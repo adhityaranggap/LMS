@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { syllabus } from '../data/syllabus';
 import { cryptoSyllabusData } from '../data/crypto-syllabus-data';
-import { Shield, Book, Menu, X, LogOut, Key, Lock, Cpu } from 'lucide-react';
+import { Shield, Book, Menu, X, LogOut, Key, Lock, Cpu, UserCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
@@ -110,6 +110,20 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           >
             <Book className="w-4 h-4" />
             Course Overview
+          </NavLink>
+
+          <NavLink
+            to="/profile"
+            className={({ isActive }) => clsx(
+              "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+              isActive
+                ? "bg-indigo-50 text-indigo-700 shadow-sm"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            )}
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <UserCircle className="w-4 h-4" />
+            Profil
           </NavLink>
 
           <div className="pt-4 pb-2 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">
