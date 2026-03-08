@@ -178,7 +178,7 @@ router.get('/students/:studentId', (req: AuthenticatedRequest, res: Response): v
       action: 'view_student',
       resource_type: 'student',
       resource_id: studentId,
-      details: JSON.stringify({ studentId }),
+      details: { studentId },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -329,7 +329,7 @@ router.post('/grade-essay', (req: AuthenticatedRequest, res: Response): void => 
       action: 'grade_essay',
       resource_type: 'quiz_attempt',
       resource_id: String(quizAttemptId),
-      details: JSON.stringify({ quizAttemptId, questionId, grade }),
+      details: { quizAttemptId, questionId, grade },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -473,7 +473,7 @@ router.post('/face-reset/:studentId', (req: AuthenticatedRequest, res: Response)
       action: 'face_reset',
       resource_type: 'student',
       resource_id: studentId,
-      details: JSON.stringify({ studentId }),
+      details: { studentId },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -585,7 +585,7 @@ router.get('/students/:studentId/fraud-flags', (req: AuthenticatedRequest, res: 
       action: 'view_student_fraud_flags',
       resource_type: 'student',
       resource_id: studentId,
-      details: JSON.stringify({ studentId }),
+      details: { studentId },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -619,7 +619,7 @@ router.get('/students/:studentId/sessions', (req: AuthenticatedRequest, res: Res
       action: 'view_student_sessions',
       resource_type: 'student',
       resource_id: studentId,
-      details: JSON.stringify({ studentId }),
+      details: { studentId },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -693,7 +693,7 @@ router.get('/export/students', (req: AuthenticatedRequest, res: Response): void 
       user_type: 'lecturer',
       action: 'export_students',
       resource_type: 'export',
-      details: JSON.stringify({ tenant_id: tenantId, count: students.length }),
+      details: { tenant_id: tenantId, count: students.length },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -737,7 +737,7 @@ router.get('/export/audit-logs', (req: AuthenticatedRequest, res: Response): voi
       user_type: 'lecturer',
       action: 'export_audit_logs',
       resource_type: 'export',
-      details: JSON.stringify({ dateFrom, dateTo, count: logs.length }),
+      details: { dateFrom, dateTo, count: logs.length },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });

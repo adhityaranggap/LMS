@@ -205,11 +205,11 @@ router.post('/query', (req: AuthenticatedRequest, res: Response): void => {
         user_type: req.user!.role ?? 'student',
         action: 'chatbot_query',
         resource_type: 'chatbot',
-        details: JSON.stringify({
+        details: {
           course: courseKey,
           message_count: messages.length,
           preview: lastUserMsg ? lastUserMsg.content.slice(0, 100) : '',
-        }),
+        },
         ip_address: req.ip || req.socket.remoteAddress || 'unknown',
         user_agent: req.headers['user-agent'] || '',
       });
