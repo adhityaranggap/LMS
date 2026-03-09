@@ -92,8 +92,9 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// --- Body parser: 1MB default, 10MB for face routes (base64 photos) ---
+// --- Body parser: 1MB default, 10MB for face routes and student login (base64 photos) ---
 app.use('/api/face', express.json({ limit: '10mb' }));
+app.use('/api/auth/student-login', express.json({ limit: '10mb' }));
 app.use(express.json({ limit: '1mb' }));
 
 // --- Security headers middleware ---

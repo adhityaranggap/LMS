@@ -200,7 +200,7 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
       .get(studentId) as { student_id: string; is_enrolled: number } | undefined;
 
     if (existingStudent && !existingStudent.is_enrolled) {
-      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.' });
+      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.', code: 'NOT_ENROLLED', student_id: studentId });
       return;
     }
 
@@ -218,7 +218,7 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
     } else {
       // Auto-create student record (not enrolled by default — lecturer must enroll)
       db.prepare('INSERT INTO students (student_id, photo, is_enrolled, course_id) VALUES (?, ?, 0, ?)').run(studentId, encryptedPhoto, courseId);
-      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.' });
+      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.', code: 'NOT_ENROLLED', student_id: studentId });
       return;
     }
 

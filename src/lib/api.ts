@@ -67,8 +67,10 @@ export async function api<T = unknown>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error || `Request failed: ${res.status}`);
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const err = new Error((body.error as string) || `Request failed: ${res.status}`);
+    if (body.code) (err as Error & { code: unknown }).code = body.code;
+    throw err;
   }
 
   return res.json() as Promise<T>;

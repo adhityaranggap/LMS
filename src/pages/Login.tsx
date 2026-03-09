@@ -59,6 +59,11 @@ export const Login = () => {
     setError('');
     const status = await checkFaceStatus(studentId.trim());
 
+    if (!status.enrolled) {
+      setError(`NIM ${studentId.trim()} belum terdaftar dalam sistem. Hubungi dosen Anda untuk mendaftarkan NIM ini.`);
+      return;
+    }
+
     setFaceRegistered(status.registered);
 
     if (!status.registered) {
@@ -90,15 +95,19 @@ export const Login = () => {
     try {
       await login(studentId, photo, faceAttempt);
     } catch (err: any) {
-      const msg = err.message || 'Login failed';
-      if (msg.includes('Wajah tidak cocok') || msg.includes('Wajah kurang cocok')) {
-        setFaceAttempt((prev) => prev + 1);
-        setPhoto(null);
+      if (err.code === 'NOT_ENROLLED') {
+        setError(`NIM ${studentId} belum terdaftar dalam sistem. Hubungi dosen Anda untuk mendaftarkan NIM ini.`);
+      } else {
+        const msg = err.message || 'Login failed';
+        if (msg.includes('Wajah tidak cocok') || msg.includes('Wajah kurang cocok')) {
+          setFaceAttempt((prev) => prev + 1);
+          setPhoto(null);
+        }
+        if (msg.includes('Verifikasi gagal setelah')) {
+          // Max attempts reached
+        }
+        setError(msg);
       }
-      if (msg.includes('Verifikasi gagal setelah')) {
-        // Max attempts reached
-      }
-      setError(msg);
     } finally {
       setSubmitting(false);
     }
