@@ -15,6 +15,7 @@ import { useToast } from '../context/ToastContext';
 import clsx from 'clsx';
 import { useChatbot } from '../context/ChatbotContext';
 import { Discussion } from '../components/Discussion';
+import { LabSimulation } from '../components/lab/LabSimulation';
 
 export const ModuleDetail = () => {
   const { id } = useParams();
@@ -256,6 +257,11 @@ export const ModuleDetail = () => {
         )}
 
         {activeTab === 'lab' && (
+          <div className="space-y-6">
+            {/* Interactive Lab Simulation (Docker-based) */}
+            <LabSimulation moduleId={module.id} />
+
+            {/* Static Lab Guide */}
           <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm space-y-8">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -410,6 +416,7 @@ export const ModuleDetail = () => {
                 </form>
               )}
             </div>
+          </div>
           </div>
         )}
 

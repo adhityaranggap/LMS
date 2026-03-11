@@ -18,10 +18,14 @@ import deadlineRoutes from './server/routes/deadline.routes';
 import discussionRoutes from './server/routes/discussion.routes';
 import notificationRoutes from './server/routes/notification.routes';
 import studentRoutes from './server/routes/student.routes';
+import labRoutes from './server/routes/lab.routes';
 import { csrfProtection } from './server/middleware/csrf';
 import { seedDefaultLecturer, seedRolesAndPermissions } from './server/seed';
 import { cleanupRevokedTokens } from './server/auth';
 import { initFaceService } from './server/services/face.service';
+import { WebSocketServer } from 'ws';
+import { setupTerminalWebSocket } from './server/services/terminal.service';
+import { labManager } from './server/services/lab-manager.service';
 
 // --- Startup validation ---
 const REQUIRED_ENV = ['JWT_SECRET', 'PHOTO_ENCRYPTION_KEY', 'LECTURER_DEFAULT_PASSWORD'] as const;
@@ -125,6 +129,7 @@ app.use('/api/deadlines', deadlineRoutes);
 app.use('/api/discussions', discussionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/labs', labRoutes);
 
 // --- Health check ---
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -172,6 +177,11 @@ setInterval(() => {
   try { cleanupRevokedTokens(); } catch (e) { logger.error('Token cleanup error', { error: String(e) }); }
 }, 60 * 60 * 1000);
 
+// --- Periodic cleanup of expired/idle lab environments (every 5 min) ---
+setInterval(() => {
+  labManager.cleanupExpired().catch(e => logger.error('Lab cleanup error', { error: String(e) }));
+}, 5 * 60 * 1000);
+
 // --- Async startup: load face models, then start server ---
 let server: ReturnType<typeof app.listen>;
 
@@ -185,11 +195,27 @@ let server: ReturnType<typeof app.listen>;
   server = app.listen(PORT, () => {
     logger.info(`InfoSec LMS backend running on http://localhost:${PORT}`);
   });
+
+  // WebSocket server for lab terminals (noServer mode to handle upgrade manually)
+  const wss = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url && req.url.startsWith('/ws/terminal/')) {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+  setupTerminalWebSocket(wss);
+  logger.info('WebSocket server ready for lab terminals');
 })();
 
 // --- Graceful shutdown ---
 function gracefulShutdown(signal: string) {
   logger.info(`Received ${signal}. Shutting down gracefully...`);
+  // Stop all lab environments on shutdown
+  labManager.destroyAll().catch(() => {});
   if (server) {
     server.close(() => {
       logger.info('HTTP server closed.');

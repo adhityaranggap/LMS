@@ -1,0 +1,17 @@
+version: '3.8'
+
+# Build helper for lab Docker images
+# Usage: docker compose -f docker/docker-compose.lab.yml build
+
+services:
+  attacker:
+    build:
+      context: ./attacker
+      dockerfile: Dockerfile
+    image: biulms-attacker:latest
+
+  target:
+    build:
+      context: ./target
+      dockerfile: Dockerfile
+    image: biulms-target:latest

@@ -10,6 +10,7 @@ const LecturerDashboard = React.lazy(() => import('./pages/LecturerDashboard').t
 const LecturerStudentDetail = React.lazy(() => import('./pages/LecturerStudentDetail').then(m => ({ default: m.LecturerStudentDetail })));
 const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard').then(m => ({ default: m.SuperAdminDashboard })));
 const StudentProfile = React.lazy(() => import('./pages/StudentProfile').then(m => ({ default: m.StudentProfile })));
+const LabAdmin = React.lazy(() => import('./pages/LabAdmin').then(m => ({ default: m.LabAdmin })));
 
 const LoadingSpinner = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/profile" element={<ProtectedRoute><StudentProfile /></ProtectedRoute>} />
           <Route path="/lecturer" element={<LecturerRoute><LecturerDashboard /></LecturerRoute>} />
           <Route path="/lecturer/student/:studentId" element={<LecturerRoute><LecturerStudentDetail /></LecturerRoute>} />
+          <Route path="/lecturer/labs" element={<LecturerRoute><LabAdmin /></LecturerRoute>} />
           <Route path="/admin" element={<SuperAdminRoute><SuperAdminDashboard /></SuperAdminRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

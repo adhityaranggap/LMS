@@ -289,6 +289,63 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_discussions_module ON discussions(module_id, tenant_id);
 
+  -- Lab simulation tables
+  CREATE TABLE IF NOT EXISTS lab_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    module_id INTEGER NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+    attacker_image TEXT DEFAULT 'biulms-attacker:latest',
+    target_image TEXT DEFAULT 'biulms-target:latest',
+    attacker_memory_mb INTEGER DEFAULT 384,
+    target_memory_mb INTEGER DEFAULT 384,
+    time_limit_minutes INTEGER DEFAULT 120,
+    objectives TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS lab_environments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    student_id TEXT NOT NULL,
+    template_id INTEGER NOT NULL,
+    attacker_container_id TEXT,
+    target_container_id TEXT,
+    network_id TEXT,
+    network_name TEXT,
+    attacker_ip TEXT,
+    target_ip TEXT,
+    status TEXT CHECK(status IN ('pending','running','stopping','stopped','failed','expired','destroyed')) DEFAULT 'pending',
+    module_id INTEGER NOT NULL,
+    started_at TEXT,
+    expires_at TEXT,
+    last_activity_at TEXT,
+    error_message TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (student_id) REFERENCES students(student_id),
+    FOREIGN KEY (template_id) REFERENCES lab_templates(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS lab_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER DEFAULT 1,
+    environment_id INTEGER NOT NULL,
+    student_id TEXT NOT NULL,
+    module_id INTEGER NOT NULL,
+    started_at TEXT,
+    ended_at TEXT,
+    duration_seconds INTEGER,
+    objectives_completed TEXT,
+    auto_grade_score INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (environment_id) REFERENCES lab_environments(id),
+    FOREIGN KEY (student_id) REFERENCES students(student_id)
+  );
+
   -- Phase 5: Multi-tenancy tables
   CREATE TABLE IF NOT EXISTS tenants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -463,7 +520,67 @@ function migrateIfNeeded() {
     CREATE INDEX IF NOT EXISTS idx_module_overrides_tenant ON module_content_overrides(tenant_id, module_id);
     CREATE INDEX IF NOT EXISTS idx_custom_modules_tenant ON custom_modules(tenant_id, course_id);
     CREATE INDEX IF NOT EXISTS idx_tenant_courses_tenant ON tenant_courses(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_environments_student ON lab_environments(student_id, status);
+    CREATE INDEX IF NOT EXISTS idx_lab_environments_status ON lab_environments(status);
+    CREATE INDEX IF NOT EXISTS idx_lab_environments_expires ON lab_environments(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_lab_sessions_student ON lab_sessions(student_id);
+    CREATE INDEX IF NOT EXISTS idx_lab_sessions_env ON lab_sessions(environment_id);
   `);
+
+  // Seed lab templates for security modules
+  const labTemplateCount = db.prepare('SELECT COUNT(*) as c FROM lab_templates').get() as { c: number };
+  if (labTemplateCount.c === 0) {
+    const labTemplates = [
+      { module_id: 3, name: 'Linux Security Lab', description: 'Audit Linux permissions, users, and iptables configuration', objectives: JSON.stringify([
+        { id: 1, description: 'Find files with world-writable permissions in /opt/data/', check_command: "find /opt/data -perm -o+w -type f | head -1", container: 'target' },
+        { id: 2, description: 'Identify the SUID file', check_command: "find /opt/data -perm -4000 -type f | head -1", container: 'target' },
+        { id: 3, description: 'List all users on the system', check_command: "test -f /home/student/users.txt && wc -l /home/student/users.txt | awk '$1>=3'", container: 'attacker' },
+      ]) },
+      { module_id: 4, name: 'ICMP & ARP Lab', description: 'Capture and analyze ICMP and ARP traffic', objectives: JSON.stringify([
+        { id: 1, description: 'Capture ARP packets using tcpdump', check_command: "test -f /home/student/arp_capture.pcap || test -f /tmp/arp_capture.pcap", container: 'attacker' },
+        { id: 2, description: 'Ping the target successfully', check_command: "test -f /home/student/ping_results.txt", container: 'attacker' },
+      ]) },
+      { module_id: 6, name: 'Network Reconnaissance Lab', description: 'Discover and enumerate network services on target', objectives: JSON.stringify([
+        { id: 1, description: 'Discover 2+ open ports on target using nmap', check_command: "test -f /home/student/scan_results.txt && grep -c 'open' /home/student/scan_results.txt | awk '$1>=2'", container: 'attacker' },
+        { id: 2, description: 'Identify Apache version on target', check_command: "grep -i 'apache' /home/student/scan_results.txt", container: 'attacker' },
+        { id: 3, description: 'Run vulnerability scan with --script vuln', check_command: "grep -i 'vuln' /home/student/scan_results.txt || test -f /home/student/vuln_scan.txt", container: 'attacker' },
+        { id: 4, description: 'Save scan results to a file', check_command: "test -f /home/student/scan_results.txt -o -f /home/student/vuln_scan.txt", container: 'attacker' },
+      ]) },
+      { module_id: 9, name: 'TCP/IP Vulnerability Lab', description: 'Analyze TCP/IP vulnerabilities and traffic anomalies', objectives: JSON.stringify([
+        { id: 1, description: 'Capture network traffic with tcpdump', check_command: "test -f /home/student/capture.pcap || test -f /tmp/capture.pcap", container: 'attacker' },
+        { id: 2, description: 'Identify SYN flood patterns', check_command: "test -f /home/student/analysis.txt && grep -i 'syn' /home/student/analysis.txt", container: 'attacker' },
+      ]) },
+      { module_id: 10, name: 'Access Control Lab', description: 'Audit and fix access control misconfigurations', objectives: JSON.stringify([
+        { id: 1, description: 'Identify weak sudoers configuration', check_command: "test -f /home/student/audit_report.txt && grep -i 'sudo' /home/student/audit_report.txt", container: 'attacker' },
+        { id: 2, description: 'Find world-readable sensitive files', check_command: "test -f /home/student/audit_report.txt && grep -i 'permission' /home/student/audit_report.txt", container: 'attacker' },
+      ]) },
+      { module_id: 11, name: 'Threat Intelligence Lab', description: 'Analyze certificates, keys, and threat indicators', objectives: JSON.stringify([
+        { id: 1, description: 'Examine SSL certificate details', check_command: "test -f /home/student/cert_analysis.txt", container: 'attacker' },
+        { id: 2, description: 'Compute and verify file hashes', check_command: "test -f /home/student/hash_results.txt", container: 'attacker' },
+      ]) },
+      { module_id: 12, name: 'Endpoint Profiling Lab', description: 'Profile endpoint services and identify vulnerabilities', objectives: JSON.stringify([
+        { id: 1, description: 'Scan all open ports on target', check_command: "test -f /home/student/port_scan.txt && grep -c 'open' /home/student/port_scan.txt | awk '$1>=3'", container: 'attacker' },
+        { id: 2, description: 'Identify vulnerable service versions', check_command: "test -f /home/student/service_versions.txt", container: 'attacker' },
+      ]) },
+      { module_id: 13, name: 'Log Analysis Lab', description: 'Analyze logs for brute force patterns and anomalies', objectives: JSON.stringify([
+        { id: 1, description: 'Count failed SSH login attempts', check_command: "test -f /home/student/log_analysis.txt && grep -i 'failed\\|brute' /home/student/log_analysis.txt", container: 'attacker' },
+        { id: 2, description: 'Identify the attacker IP address', check_command: "test -f /home/student/log_analysis.txt && grep -E '10\\.10\\.0\\.50|192\\.168' /home/student/log_analysis.txt", container: 'attacker' },
+        { id: 3, description: 'Create attack timeline', check_command: "test -f /home/student/timeline.txt", container: 'attacker' },
+      ]) },
+      { module_id: 14, name: 'Alert & Incident Response Lab', description: 'Investigate a multi-stage attack and create incident report', objectives: JSON.stringify([
+        { id: 1, description: 'Identify the backdoor file', check_command: "test -f /home/student/incident_report.txt && grep -i 'backdoor' /home/student/incident_report.txt", container: 'attacker' },
+        { id: 2, description: 'Find the C2 server IP', check_command: "test -f /home/student/incident_report.txt && grep '172.16.0.99' /home/student/incident_report.txt", container: 'attacker' },
+        { id: 3, description: 'List all Indicators of Compromise', check_command: "test -f /home/student/ioc_list.txt || (test -f /home/student/incident_report.txt && grep -i 'ioc\\|indicator' /home/student/incident_report.txt)", container: 'attacker' },
+      ]) },
+    ];
+
+    const insertTemplate = db.prepare(
+      "INSERT OR IGNORE INTO lab_templates (tenant_id, module_id, name, description, objectives) VALUES (1, ?, ?, ?, ?)"
+    );
+    for (const t of labTemplates) {
+      insertTemplate.run(t.module_id, t.name, t.description, t.objectives);
+    }
+  }
 
   // Add manage_lecturers permission and assign to lecturer role
   const managePermExists = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;
