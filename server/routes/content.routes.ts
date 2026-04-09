@@ -104,7 +104,7 @@ router.put('/:moduleId', (req: AuthenticatedRequest, res: Response): void => {
   }
 
   // Schema validation: only allow known top-level keys
-  const ALLOWED_KEYS = ['theory', 'lab', 'caseStudy', 'quiz', 'videoResources', 'title', 'description'];
+  const ALLOWED_KEYS = ['theory', 'lab', 'caseStudy', 'caseStudyPool', 'quiz', 'videoResources', 'title', 'description'];
   const bodyKeys = Object.keys(content);
   const invalidKeys = bodyKeys.filter(k => !ALLOWED_KEYS.includes(k));
   if (invalidKeys.length > 0) {

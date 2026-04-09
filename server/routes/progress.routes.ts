@@ -236,10 +236,13 @@ router.post('/case-submit', progressRateLimit, (req: AuthenticatedRequest, res: 
     return;
   }
 
+  // Accept variantIndex for per-student case study pool tracking
+  const variantIndex = typeof req.body.variantIndex === 'number' ? Math.floor(req.body.variantIndex) : -1;
+
   try {
     const result = db.prepare(
-      'INSERT INTO case_study_submissions (student_id, module_id, answers) VALUES (?, ?, ?)'
-    ).run(req.user!.id, moduleId, answersStr);
+      'INSERT INTO case_study_submissions (student_id, module_id, answers, variant_index) VALUES (?, ?, ?, ?)'
+    ).run(req.user!.id, moduleId, answersStr, variantIndex);
 
     const submissionId = Number(result.lastInsertRowid);
 
@@ -250,7 +253,7 @@ router.post('/case-submit', progressRateLimit, (req: AuthenticatedRequest, res: 
       action: 'case_submit',
       resource_type: 'case_study_submission',
       resource_id: String(submissionId),
-      details: { moduleId },
+      details: { moduleId, variantIndex },
       ip_address: req.ip || req.socket.remoteAddress || 'unknown',
       user_agent: req.headers['user-agent'] || '',
     });
@@ -259,31 +262,39 @@ router.post('/case-submit', progressRateLimit, (req: AuthenticatedRequest, res: 
     const antiCheatData = req.body.antiCheatData as AntiCheatData | undefined;
     analyzeSubmission(req.user!.id, 'case_study', submissionId, antiCheatData);
 
-    // AI validation for case study answers
+    // AI validation — use the variant's questions if a pool variant was assigned
     const allModules = [...syllabusData, ...cryptoSyllabusData];
     const moduleData = allModules.find((m) => m.id === moduleId);
-    if (moduleData?.caseStudy?.questions) {
-      let parsedAnswers: Record<string, string>;
-      try {
-        parsedAnswers = typeof rawAnswers === 'string' ? JSON.parse(rawAnswers) : rawAnswers;
-      } catch {
-        parsedAnswers = {};
-      }
+    if (moduleData) {
+      const pool = (moduleData as { caseStudyPool?: { questions: string[] }[] }).caseStudyPool;
+      const activeQuestions: string[] =
+        variantIndex >= 0 && pool && pool[variantIndex]
+          ? pool[variantIndex].questions
+          : moduleData.caseStudy?.questions ?? [];
 
-      for (let i = 0; i < moduleData.caseStudy.questions.length; i++) {
-        const q = moduleData.caseStudy.questions[i];
-        const studentAnswer = parsedAnswers[String(i)];
-        if (studentAnswer && studentAnswer.trim().length > 0) {
-          enqueueValidation({
-            submission_type: 'case_study',
-            submission_id: submissionId,
-            question_id: i,
-            student_id: req.user!.id,
-            module_id: moduleId,
-            question: q,
-            referenceAnswer: '',
-            studentAnswer,
-          });
+      if (activeQuestions.length > 0) {
+        let parsedAnswers: Record<string, string>;
+        try {
+          parsedAnswers = typeof rawAnswers === 'string' ? JSON.parse(rawAnswers) : rawAnswers;
+        } catch {
+          parsedAnswers = {};
+        }
+
+        for (let i = 0; i < activeQuestions.length; i++) {
+          const q = activeQuestions[i];
+          const studentAnswer = parsedAnswers[String(i)];
+          if (studentAnswer && studentAnswer.trim().length > 0) {
+            enqueueValidation({
+              submission_type: 'case_study',
+              submission_id: submissionId,
+              question_id: i,
+              student_id: req.user!.id,
+              module_id: moduleId,
+              question: q,
+              referenceAnswer: '',
+              studentAnswer,
+            });
+          }
         }
       }
     }
@@ -305,8 +316,8 @@ router.get('/case-submission/:moduleId', (req: AuthenticatedRequest, res: Respon
 
   try {
     const submission = db.prepare(
-      'SELECT id, answers, submitted_at FROM case_study_submissions WHERE student_id = ? AND module_id = ? ORDER BY submitted_at DESC LIMIT 1'
-    ).get(req.user!.id, moduleId) as { id: number; answers: string; submitted_at: string } | undefined;
+      'SELECT id, answers, submitted_at, variant_index FROM case_study_submissions WHERE student_id = ? AND module_id = ? ORDER BY submitted_at DESC LIMIT 1'
+    ).get(req.user!.id, moduleId) as { id: number; answers: string; submitted_at: string; variant_index: number | null } | undefined;
 
     if (!submission) {
       res.json({ submission: null });
@@ -325,6 +336,7 @@ router.get('/case-submission/:moduleId', (req: AuthenticatedRequest, res: Respon
         id: submission.id,
         answers: parsedAnswers,
         submittedAt: submission.submitted_at,
+        variantIndex: submission.variant_index ?? -1,
       },
     });
   } catch (error) {

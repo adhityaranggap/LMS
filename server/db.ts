@@ -482,6 +482,12 @@ function migrateIfNeeded() {
     db.exec('ALTER TABLE lecturers ADD COLUMN tokens_invalidated_at TEXT');
   }
 
+  // Add variant_index to case_study_submissions for per-student case study pool
+  const caseStudyCols = db.pragma('table_info(case_study_submissions)') as { name: string }[];
+  if (!caseStudyCols.find((c) => c.name === 'variant_index')) {
+    db.exec('ALTER TABLE case_study_submissions ADD COLUMN variant_index INTEGER DEFAULT -1');
+  }
+
   // Rate limits table for persistent rate limiting & account lockout
   db.exec(`
     CREATE TABLE IF NOT EXISTS rate_limits (

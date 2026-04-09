@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { BookOpen, Terminal, Briefcase, HelpCircle, CheckCircle2, Search, Download, Send, Play, AlertTriangle, Lightbulb, Camera, FileText, MessageCircle, Cpu } from 'lucide-react';
@@ -9,6 +9,7 @@ import { CryptoTools } from '../components/CryptoTools';
 import { useLabSteps, useCaseSubmission, recordVisit } from '../hooks/useProgress';
 import { useModuleContent } from '../hooks/useModuleContent';
 import { useAuth } from '../context/AuthContext';
+import { getStudentCaseStudy } from '../utils/case-study-variant';
 import { api } from '../lib/api';
 import { useAntiCheat } from '../hooks/useAntiCheat';
 import { useToast } from '../context/ToastContext';
@@ -21,7 +22,7 @@ export const ModuleDetail = () => {
   const { id } = useParams();
   const { module, loading } = useModuleContent(Number(id));
   const { openChat } = useChatbot();
-  const { course } = useAuth();
+  const { user, course } = useAuth();
   const { toast } = useToast();
   const { getAntiCheatData: getCaseAntiCheatData } = useAntiCheat();
   const isCrypto = course === 'crypto';
@@ -38,8 +39,18 @@ export const ModuleDetail = () => {
   const { completedSteps, toggleStep } = useLabSteps(moduleId);
   const { submission: caseSubmission } = useCaseSubmission(moduleId);
 
-  // Auto-save case study drafts
-  const DRAFT_KEY = `draft_case_${moduleId}`;
+  // Deterministic per-student case study variant
+  const activeCaseStudy = useMemo(() => {
+    if (!module || !user) return { variant: module?.caseStudy, variantIndex: -1 };
+    return getStudentCaseStudy(
+      module as Parameters<typeof getStudentCaseStudy>[0],
+      user.id,
+      module.id
+    );
+  }, [module, user]);
+
+  // Auto-save case study drafts (key includes variant so different variants don't collide)
+  const DRAFT_KEY = `draft_case_${moduleId}_v${activeCaseStudy.variantIndex}`;
   useEffect(() => {
     if (Object.keys(caseAnswers).length === 0 || caseSubmission) return;
     const interval = setInterval(() => {
@@ -158,7 +169,12 @@ export const ModuleDetail = () => {
       const antiCheatData = getCaseAntiCheatData();
       await api('/api/progress/case-submit', {
         method: 'POST',
-        body: JSON.stringify({ moduleId: module.id, answers: JSON.stringify(caseAnswers), antiCheatData }),
+        body: JSON.stringify({
+          moduleId: module.id,
+          answers: JSON.stringify(caseAnswers),
+          antiCheatData,
+          variantIndex: activeCaseStudy.variantIndex,
+        }),
       });
       localStorage.removeItem(DRAFT_KEY);
       toast.success('Studi kasus berhasil dikirim!');
@@ -420,15 +436,15 @@ export const ModuleDetail = () => {
           </div>
         )}
 
-        {activeTab === 'case' && (
+        {activeTab === 'case' && activeCaseStudy.variant && (
           <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-purple-500" />
-              {module.caseStudy.title}
+              {activeCaseStudy.variant.title}
             </h2>
             <div className="mb-8">
               <div className="bg-purple-50 p-6 rounded-xl border border-purple-100 text-purple-900 leading-relaxed">
-                {module.caseStudy.scenario}
+                {activeCaseStudy.variant.scenario}
               </div>
             </div>
 
@@ -437,7 +453,7 @@ export const ModuleDetail = () => {
                 Discussion Questions
               </h3>
               <div className="grid gap-6 mb-8">
-                {module.caseStudy.questions.map((q, idx) => (
+                {activeCaseStudy.variant.questions.map((q, idx) => (
                   <div key={idx} className="p-5 rounded-xl border border-slate-200 hover:shadow-sm transition-shadow bg-slate-50/50">
                     <div className="flex gap-3 mb-3 items-start">
                       <span className="text-purple-600 font-bold flex-shrink-0">Q{idx + 1}.</span>

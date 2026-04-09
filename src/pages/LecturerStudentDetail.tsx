@@ -60,6 +60,7 @@ interface CaseSubmission {
   question_index: number;
   answer: string;
   submitted_at: string;
+  variant_index?: number;
 }
 
 interface EssayGrade {
@@ -554,14 +555,20 @@ export const LecturerStudentDetail: React.FC = () => {
                             <div key={i} className="bg-slate-50 rounded-xl px-4 py-3">
                               <p className="text-xs font-medium text-slate-500 mb-1">
                                 Question {cs.question_index + 1}:
-                                {mod.caseStudy.questions[cs.question_index] && (
-                                  <span className="font-normal text-slate-400 ml-1">
-                                    {mod.caseStudy.questions[cs.question_index].slice(0, 80)}
-                                    {mod.caseStudy.questions[cs.question_index].length > 80
-                                      ? '...'
-                                      : ''}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const pool = (mod as { caseStudyPool?: { questions: string[] }[] }).caseStudyPool;
+                                  const variantIdx = cs.variant_index ?? -1;
+                                  const questions =
+                                    variantIdx >= 0 && pool && pool[variantIdx]
+                                      ? pool[variantIdx].questions
+                                      : mod.caseStudy.questions;
+                                  const q = questions[cs.question_index];
+                                  return q ? (
+                                    <span className="font-normal text-slate-400 ml-1">
+                                      {q.slice(0, 80)}{q.length > 80 ? '...' : ''}
+                                    </span>
+                                  ) : null;
+                                })()}
                               </p>
                               <p className="text-sm text-slate-700">{cs.answer}</p>
                               <p className="text-[10px] text-slate-400 mt-1">
