@@ -47,7 +47,8 @@ export class DockerService {
     ip: string,
     env: Record<string, string>,
     memoryMb: number,
-    caps: string[] = ['NET_RAW']
+    caps: string[] = ['NET_RAW'],
+    pidsLimit: number = 256
   ): Promise<string> {
     const envArray = Object.entries(env).map(([k, v]) => `${k}=${v}`);
 
@@ -58,13 +59,13 @@ export class DockerService {
       Hostname: name.includes('atk') ? 'attacker' : 'target',
       HostConfig: {
         Memory: memoryMb * 1024 * 1024,
-        MemorySwap: memoryMb * 1024 * 1024, // No swap
+        MemorySwap: Math.floor(memoryMb * 1.5) * 1024 * 1024, // 50% swap cushion to prevent instant OOM
         CpuShares: 256,
         NetworkMode: networkId,
         CapDrop: ['ALL'],
         CapAdd: caps,
         SecurityOpt: ['no-new-privileges:true'],
-        PidsLimit: 256,
+        PidsLimit: pidsLimit,
         // Limit writable storage to RAM-backed tmpfs — prevents disk exhaustion
         Tmpfs: {
           '/tmp': 'rw,noexec,nosuid,size=50m',
@@ -176,6 +177,23 @@ export class DockerService {
       await docker.getExec(dockerExecId).resize({ w: cols, h: rows });
     } catch {
       // Resize may fail if exec already exited
+    }
+  }
+
+  async getContainerHealth(id: string): Promise<{ running: boolean; status: string; oomKilled: boolean; exitCode: number; error: string } | null> {
+    try {
+      const container = docker.getContainer(id);
+      const info = await container.inspect();
+      return {
+        running: info.State.Running,
+        status: info.State.Status,
+        oomKilled: (info.State as any).OOMKilled ?? false,
+        exitCode: (info.State as any).ExitCode ?? 0,
+        error: (info.State as any).Error ?? '',
+      };
+    } catch (err: any) {
+      if (err.statusCode === 404) return null;
+      throw err;
     }
   }
 

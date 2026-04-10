@@ -83,6 +83,20 @@ export function setupTerminalWebSocket(wss: WebSocketServer): void {
     }
     activeConnections.set(connKey, currentConns + 1);
 
+    // Check container is actually running before attaching
+    try {
+      const health = await dockerService.getContainerHealth(containerId);
+      if (!health || !health.running) {
+        const reason = health?.oomKilled
+          ? 'Container killed: out of memory. Use Reset Target to restart.'
+          : `Container not running (${health?.status ?? 'removed'}).`;
+        ws.close(4500, reason);
+        return;
+      }
+    } catch (err) {
+      logger.warn('Could not check container health, proceeding anyway', { tag: 'terminal', containerId, error: String(err) });
+    }
+
     let shellStream: Duplex;
 
     try {

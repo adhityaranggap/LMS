@@ -298,8 +298,8 @@ db.exec(`
     description TEXT,
     attacker_image TEXT DEFAULT 'biulms-attacker:latest',
     target_image TEXT DEFAULT 'biulms-target:latest',
-    attacker_memory_mb INTEGER DEFAULT 128,
-    target_memory_mb INTEGER DEFAULT 192,
+    attacker_memory_mb INTEGER DEFAULT 256,
+    target_memory_mb INTEGER DEFAULT 384,
     attacker_caps TEXT DEFAULT 'NET_RAW',
     target_caps TEXT DEFAULT 'NET_RAW',
     time_limit_minutes INTEGER DEFAULT 120,
@@ -590,9 +590,9 @@ function migrateIfNeeded() {
     }
   }
 
-  // Reduce lab container memory for multi-student concurrency (384→128/192)
-  db.prepare("UPDATE lab_templates SET attacker_memory_mb = 128 WHERE attacker_memory_mb = 384").run();
-  db.prepare("UPDATE lab_templates SET target_memory_mb = 192 WHERE target_memory_mb = 384").run();
+  // Restore lab container memory to usable levels (128/192 was too low — OOM kills on all modules)
+  db.prepare("UPDATE lab_templates SET attacker_memory_mb = 256 WHERE attacker_memory_mb IN (128, 384)").run();
+  db.prepare("UPDATE lab_templates SET target_memory_mb = 384 WHERE target_memory_mb IN (192, 384)").run();
 
   // Add per-module capability columns if missing (existing DBs)
   const labTemplateCols = (db.prepare("PRAGMA table_info(lab_templates)").all() as { name: string }[]).map(c => c.name);

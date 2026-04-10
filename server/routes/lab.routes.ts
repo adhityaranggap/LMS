@@ -151,6 +151,32 @@ router.post('/check-objectives/:envId', studentOnly, async (req: AuthenticatedRe
   }
 });
 
+// GET /api/labs/container-health/:envId — Container health status (OOM, exit codes)
+router.get('/container-health/:envId', studentOnly, async (req: AuthenticatedRequest, res: Response) => {
+  const envId = Number(req.params.envId);
+  const env = labManager.getEnvironment(envId);
+
+  if (!env || (req.user!.role === 'student' && env.student_id !== req.user!.id)) {
+    res.status(404).json({ error: 'Environment not found' });
+    return;
+  }
+
+  try {
+    const [attackerHealth, targetHealth] = await Promise.all([
+      env.attacker_container_id ? dockerService.getContainerHealth(env.attacker_container_id) : null,
+      env.target_container_id ? dockerService.getContainerHealth(env.target_container_id) : null,
+    ]);
+
+    const dead = { running: false, status: 'removed', oomKilled: false, exitCode: -1, error: 'Container not found' };
+    res.json({
+      attacker: attackerHealth ?? dead,
+      target: targetHealth ?? dead,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Lecturer/Admin endpoints ---
 
 // GET /api/labs/admin/environments — All active environments

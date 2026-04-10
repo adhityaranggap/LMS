@@ -144,8 +144,9 @@ export class LabManager {
         networkName,
         attackerIp,
         { LAB_MODULE: String(moduleId), TARGET_IP: targetIp },
-        template.attacker_memory_mb || 128,
-        attackerCaps
+        template.attacker_memory_mb || 256,
+        attackerCaps,
+        256
       );
 
       // Create target container
@@ -155,8 +156,9 @@ export class LabManager {
         networkName,
         targetIp,
         { LAB_MODULE: String(moduleId) },
-        template.target_memory_mb || 192,
-        targetCaps
+        template.target_memory_mb || 384,
+        targetCaps,
+        512
       );
 
       // Start containers
@@ -292,8 +294,9 @@ export class LabManager {
       env.network_name,
       env.target_ip,
       { LAB_MODULE: String(env.module_id) },
-      template.target_memory_mb || 192,
-      targetCaps
+      template.target_memory_mb || 384,
+      targetCaps,
+      512
     );
 
     await dockerService.startContainer(newContainerId);

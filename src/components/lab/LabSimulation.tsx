@@ -46,6 +46,10 @@ export const LabSimulation: React.FC<LabSimulationProps> = ({ moduleId }) => {
   const [checkScore, setCheckScore] = useState<number | undefined>();
   const [checking, setChecking] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [containerHealth, setContainerHealth] = useState<{
+    attacker: { running: boolean; oomKilled: boolean; status: string };
+    target: { running: boolean; oomKilled: boolean; status: string };
+  } | null>(null);
 
   // Load template and status on mount
   useEffect(() => {
@@ -68,6 +72,27 @@ export const LabSimulation: React.FC<LabSimulationProps> = ({ moduleId }) => {
     };
     loadData();
   }, [moduleId]);
+
+  // Poll container health every 15s while lab is running
+  useEffect(() => {
+    if (!env) { setContainerHealth(null); return; }
+
+    const checkHealth = async () => {
+      try {
+        const health = await api<typeof containerHealth>(`/api/labs/container-health/${env.id}`);
+        setContainerHealth(health);
+        if (health && !health.attacker.running && !health.target.running) {
+          toast.error('Both containers have stopped unexpectedly. Reset the target or relaunch the lab.');
+        }
+      } catch {
+        // Advisory only — silently ignore
+      }
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 15000);
+    return () => clearInterval(interval);
+  }, [env?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleProvision = useCallback(async () => {
     setProvisioning(true);
@@ -227,8 +252,8 @@ export const LabSimulation: React.FC<LabSimulationProps> = ({ moduleId }) => {
       {/* Terminals + Objectives */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <WebTerminal envId={env.id} container="attacker" className="h-[400px]" />
-          <WebTerminal envId={env.id} container="target" className="h-[400px]" />
+          <WebTerminal envId={env.id} container="attacker" className="h-[400px]" containerHealth={containerHealth?.attacker} />
+          <WebTerminal envId={env.id} container="target" className="h-[400px]" containerHealth={containerHealth?.target} />
         </div>
         <div>
           <LabObjectives
