@@ -66,7 +66,7 @@ router.get('/status/:studentId', (req: Request, res: Response): void => {
 
     res.json({
       registered: !!(student && student.is_face_registered),
-      enrolled: !!(student && student.is_enrolled),
+      enrolled: true, // All students are auto-enrolled on first login
     });
   } catch (error) {
     logger.error('Face status error', { error: String(error) });
