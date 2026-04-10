@@ -68,8 +68,8 @@ export class DockerService {
         PidsLimit: pidsLimit,
         // Limit writable storage to RAM-backed tmpfs — prevents disk exhaustion
         Tmpfs: {
-          '/tmp': 'rw,noexec,nosuid,size=50m',
-          '/home/student': 'rw,nosuid,size=100m',
+          '/tmp': 'rw,nosuid,size=50m,mode=1777',
+          '/home/student': 'rw,nosuid,size=100m,uid=1000,gid=1000,mode=0755',
         },
       },
       NetworkingConfig: {
