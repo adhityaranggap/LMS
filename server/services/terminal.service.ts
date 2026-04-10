@@ -7,6 +7,10 @@ import { dockerService } from './docker.service';
 import { logger } from './logger';
 import db from '../db';
 
+// Track active terminal connections per container to prevent resource exhaustion
+const activeConnections = new Map<string, number>();
+const MAX_TERMINALS_PER_CONTAINER = 4;
+
 export function setupTerminalWebSocket(wss: WebSocketServer): void {
   wss.on('connection', async (ws: WebSocket, req: IncomingMessage) => {
     const url = req.url || '';
@@ -70,10 +74,20 @@ export function setupTerminalWebSocket(wss: WebSocketServer): void {
       return;
     }
 
+    // Limit concurrent terminals per container
+    const connKey = `${envId}-${containerType}`;
+    const currentConns = activeConnections.get(connKey) || 0;
+    if (currentConns >= MAX_TERMINALS_PER_CONTAINER) {
+      ws.close(4006, 'Too many terminal connections');
+      return;
+    }
+    activeConnections.set(connKey, currentConns + 1);
+
     let shellStream: Duplex;
 
     try {
-      shellStream = await dockerService.attachShell(containerId);
+      // Always run as 'student' user — prevents students from getting a root shell
+      shellStream = await dockerService.attachShell(containerId, 'student');
     } catch (err) {
       logger.error('Failed to attach shell', { tag: 'terminal', envId, containerType, error: String(err) });
       ws.close(4500, 'Failed to attach shell');
@@ -129,6 +143,9 @@ export function setupTerminalWebSocket(wss: WebSocketServer): void {
       } catch {
         // Already closed
       }
+      const c = activeConnections.get(connKey) || 1;
+      if (c <= 1) activeConnections.delete(connKey);
+      else activeConnections.set(connKey, c - 1);
       logger.info('Terminal disconnected', { tag: 'terminal', envId, containerType });
     });
 

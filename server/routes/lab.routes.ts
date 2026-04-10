@@ -1,6 +1,6 @@
-import { Router, Response } from 'express';
+import { Router, Response, NextFunction } from 'express';
 import db from '../db';
-import { authMiddleware, lecturerOnly, studentOnly, AuthenticatedRequest } from '../auth';
+import { authMiddleware, studentOnly, AuthenticatedRequest } from '../auth';
 import { labManager } from '../services/lab-manager.service';
 import { dockerService } from '../services/docker.service';
 import { logAudit } from '../services/audit.service';
@@ -8,6 +8,19 @@ import { logger } from '../services/logger';
 
 const router = Router();
 router.use(authMiddleware);
+
+// Lab admin access: lecturer, tenant_admin, or super_admin
+function labAdminOnly(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (!req.user || !['lecturer', 'tenant_admin', 'super_admin'].includes(req.user.role)) {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+  next();
+}
+
+// Rate limit provisioning per student (30s cooldown) to prevent Docker daemon DoS
+const provisionTimestamps = new Map<string, number>();
+const PROVISION_COOLDOWN_MS = 30_000;
 
 // --- Student endpoints ---
 
@@ -40,6 +53,15 @@ router.get('/status/:moduleId', studentOnly, (req: AuthenticatedRequest, res: Re
 // POST /api/labs/provision/:moduleId — Provision containers
 router.post('/provision/:moduleId', studentOnly, async (req: AuthenticatedRequest, res: Response) => {
   const moduleId = Number(req.params.moduleId);
+  const studentId = req.user!.id;
+
+  // Enforce cooldown to prevent Docker daemon DoS
+  const lastProvision = provisionTimestamps.get(studentId) || 0;
+  if (Date.now() - lastProvision < PROVISION_COOLDOWN_MS) {
+    res.status(429).json({ error: 'Please wait 30 seconds before provisioning a new lab' });
+    return;
+  }
+  provisionTimestamps.set(studentId, Date.now());
 
   try {
     // Check Docker availability
@@ -50,7 +72,7 @@ router.post('/provision/:moduleId', studentOnly, async (req: AuthenticatedReques
     }
 
     const env = await labManager.provisionEnvironment(
-      req.user!.id,
+      studentId,
       moduleId,
       req.user!.tenant_id ?? 1,
     );
@@ -132,7 +154,7 @@ router.post('/check-objectives/:envId', studentOnly, async (req: AuthenticatedRe
 // --- Lecturer/Admin endpoints ---
 
 // GET /api/labs/admin/environments — All active environments
-router.get('/admin/environments', lecturerOnly, (_req: AuthenticatedRequest, res: Response) => {
+router.get('/admin/environments', labAdminOnly, (_req: AuthenticatedRequest, res: Response) => {
   const environments = db.prepare(`
     SELECT le.*, s.full_name as student_name, lt.name as template_name
     FROM lab_environments le
@@ -145,7 +167,7 @@ router.get('/admin/environments', lecturerOnly, (_req: AuthenticatedRequest, res
 });
 
 // POST /api/labs/admin/destroy/:envId — Force-destroy
-router.post('/admin/destroy/:envId', lecturerOnly, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/admin/destroy/:envId', labAdminOnly, async (req: AuthenticatedRequest, res: Response) => {
   const envId = Number(req.params.envId);
   try {
     await labManager.destroyEnvironment(envId);
@@ -163,7 +185,7 @@ router.post('/admin/destroy/:envId', lecturerOnly, async (req: AuthenticatedRequ
 });
 
 // POST /api/labs/admin/destroy-all — Emergency destroy all
-router.post('/admin/destroy-all', lecturerOnly, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/admin/destroy-all', labAdminOnly, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const count = await labManager.destroyAll();
     logAudit({
@@ -180,7 +202,7 @@ router.post('/admin/destroy-all', lecturerOnly, async (req: AuthenticatedRequest
 });
 
 // GET /api/labs/admin/stats — Resource usage + session analytics
-router.get('/admin/stats', lecturerOnly, async (_req: AuthenticatedRequest, res: Response) => {
+router.get('/admin/stats', labAdminOnly, async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const stats = await labManager.getStats();
     res.json(stats);
@@ -190,7 +212,7 @@ router.get('/admin/stats', lecturerOnly, async (_req: AuthenticatedRequest, res:
 });
 
 // GET /api/labs/admin/sessions — Session history
-router.get('/admin/sessions', lecturerOnly, (_req: AuthenticatedRequest, res: Response) => {
+router.get('/admin/sessions', labAdminOnly, (_req: AuthenticatedRequest, res: Response) => {
   const sessions = db.prepare(`
     SELECT ls.*, s.full_name as student_name
     FROM lab_sessions ls

@@ -300,6 +300,8 @@ db.exec(`
     target_image TEXT DEFAULT 'biulms-target:latest',
     attacker_memory_mb INTEGER DEFAULT 128,
     target_memory_mb INTEGER DEFAULT 192,
+    attacker_caps TEXT DEFAULT 'NET_RAW',
+    target_caps TEXT DEFAULT 'NET_RAW',
     time_limit_minutes INTEGER DEFAULT 120,
     objectives TEXT,
     is_active INTEGER DEFAULT 1,
@@ -591,6 +593,15 @@ function migrateIfNeeded() {
   // Reduce lab container memory for multi-student concurrency (384→128/192)
   db.prepare("UPDATE lab_templates SET attacker_memory_mb = 128 WHERE attacker_memory_mb = 384").run();
   db.prepare("UPDATE lab_templates SET target_memory_mb = 192 WHERE target_memory_mb = 384").run();
+
+  // Add per-module capability columns if missing (existing DBs)
+  const labTemplateCols = (db.prepare("PRAGMA table_info(lab_templates)").all() as { name: string }[]).map(c => c.name);
+  if (!labTemplateCols.includes('attacker_caps')) {
+    db.prepare("ALTER TABLE lab_templates ADD COLUMN attacker_caps TEXT DEFAULT 'NET_RAW'").run();
+    db.prepare("ALTER TABLE lab_templates ADD COLUMN target_caps TEXT DEFAULT 'NET_RAW'").run();
+    // Modules 3, 4, 6 need NET_ADMIN for iptables/ARP manipulation
+    db.prepare("UPDATE lab_templates SET attacker_caps = 'NET_RAW,NET_ADMIN', target_caps = 'NET_RAW,NET_ADMIN' WHERE module_id IN (3, 4, 6)").run();
+  }
 
   // Add manage_lecturers permission and assign to lecturer role
   const managePermExists = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;

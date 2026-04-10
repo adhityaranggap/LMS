@@ -46,7 +46,8 @@ export class DockerService {
     networkId: string,
     ip: string,
     env: Record<string, string>,
-    memoryMb: number
+    memoryMb: number,
+    caps: string[] = ['NET_RAW']
   ): Promise<string> {
     const envArray = Object.entries(env).map(([k, v]) => `${k}=${v}`);
 
@@ -60,11 +61,15 @@ export class DockerService {
         MemorySwap: memoryMb * 1024 * 1024, // No swap
         CpuShares: 256,
         NetworkMode: networkId,
-        // Security: no privileged, drop capabilities
         CapDrop: ['ALL'],
-        CapAdd: ['NET_RAW', 'NET_ADMIN'], // Needed for nmap, tcpdump, iptables
+        CapAdd: caps,
         SecurityOpt: ['no-new-privileges:true'],
         PidsLimit: 256,
+        // Limit writable storage to RAM-backed tmpfs — prevents disk exhaustion
+        Tmpfs: {
+          '/tmp': 'rw,noexec,nosuid,size=50m',
+          '/home/student': 'rw,nosuid,size=100m',
+        },
       },
       NetworkingConfig: {
         EndpointsConfig: {
@@ -149,10 +154,11 @@ export class DockerService {
    * Attach an interactive shell to a container via Docker Engine API.
    * Returns a duplex stream for bidirectional I/O.
    */
-  async attachShell(id: string): Promise<Duplex> {
+  async attachShell(id: string, user?: string): Promise<Duplex> {
     const container = docker.getContainer(id);
     const dockerExec = await container.exec({
       Cmd: ['/bin/bash'],
+      User: user ?? '',
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,

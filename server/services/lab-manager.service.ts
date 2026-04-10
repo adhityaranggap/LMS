@@ -32,6 +32,8 @@ export interface LabTemplate {
   target_image: string;
   attacker_memory_mb: number;
   target_memory_mb: number;
+  attacker_caps: string;
+  target_caps: string;
   time_limit_minutes: number;
   objectives: string;
   is_active: number;
@@ -44,44 +46,29 @@ export interface ObjectiveResult {
   output?: string;
 }
 
-// Allocate unique subnet per student — uses a counter
-let subnetCounter = 1;
+// Allocate a unique subnet by querying the DB for currently-active environments.
+// Since better-sqlite3 is synchronous, this is race-free within Node.js's event loop.
 function allocateSubnet(): { subnet: string; attackerIp: string; targetIp: string } {
-  const x = subnetCounter++;
-  if (subnetCounter > 250) subnetCounter = 1;
-  return {
-    subnet: `10.10.${x}.0/24`,
-    attackerIp: `10.10.${x}.2`,
-    targetIp: `10.10.${x}.3`,
-  };
-}
+  const active = db.prepare(
+    "SELECT attacker_ip FROM lab_environments WHERE status IN ('running', 'pending')"
+  ).all() as { attacker_ip: string }[];
 
-// On startup, advance subnetCounter past any already-in-use subnets so restarts
-// don't collide with still-running lab networks.
-async function initSubnetCounter(): Promise<void> {
-  try {
-    const Docker = (await import('dockerode')).default;
-    const docker = new Docker({ socketPath: '/var/run/docker.sock' });
-    const networks = await docker.listNetworks({ filters: { label: ['biulms=lab'] } });
-    let maxX = 0;
-    for (const n of networks) {
-      const info = await docker.getNetwork(n.Id).inspect() as { IPAM?: { Config?: { Subnet?: string }[] } };
-      const subnet = info.IPAM?.Config?.[0]?.Subnet;
-      if (subnet) {
-        const match = subnet.match(/^10\.10\.(\d+)\./);
-        if (match) maxX = Math.max(maxX, Number(match[1]));
-      }
+  const usedOctets = new Set(active.map(e => {
+    const m = e.attacker_ip?.match(/^10\.10\.(\d+)\./);
+    return m ? Number(m[1]) : 0;
+  }));
+
+  for (let x = 1; x <= 250; x++) {
+    if (!usedOctets.has(x)) {
+      return {
+        subnet: `10.10.${x}.0/24`,
+        attackerIp: `10.10.${x}.2`,
+        targetIp: `10.10.${x}.3`,
+      };
     }
-    if (maxX > 0) {
-      subnetCounter = maxX + 1;
-      logger.info('Subnet counter initialized from existing networks', { tag: 'lab', subnetCounter });
-    }
-  } catch {
-    // Docker not available — counter stays at 1
   }
+  throw new Error('No available subnets — maximum of 250 concurrent lab sessions reached');
 }
-
-void initSubnetCounter();
 
 export class LabManager {
   async provisionEnvironment(
@@ -89,6 +76,11 @@ export class LabManager {
     moduleId: number,
     tenantId: number = 1,
   ): Promise<LabEnvironment> {
+    // Validate student ID format before using it in container names
+    if (!/^[a-zA-Z0-9_-]{1,50}$/.test(studentId)) {
+      throw new Error('Invalid student ID format');
+    }
+
     // Check for existing running environment for this student
     const existing = db.prepare(
       "SELECT * FROM lab_environments WHERE student_id = ? AND status IN ('running', 'pending') LIMIT 1"
@@ -125,6 +117,9 @@ export class LabManager {
     const attackerName = `biulms-atk-${studentId}`;
     const targetName = `biulms-tgt-${studentId}`;
 
+    const attackerCaps = (template.attacker_caps || 'NET_RAW').split(',').map(c => c.trim()).filter(Boolean);
+    const targetCaps = (template.target_caps || 'NET_RAW').split(',').map(c => c.trim()).filter(Boolean);
+
     // Insert pending record
     const timeLimitMinutes = template.time_limit_minutes || DEFAULT_TIME_LIMIT_MINUTES;
     const expiresAt = new Date(Date.now() + timeLimitMinutes * 60 * 1000).toISOString();
@@ -149,7 +144,8 @@ export class LabManager {
         networkName,
         attackerIp,
         { LAB_MODULE: String(moduleId), TARGET_IP: targetIp },
-        template.attacker_memory_mb || 128
+        template.attacker_memory_mb || 128,
+        attackerCaps
       );
 
       // Create target container
@@ -159,7 +155,8 @@ export class LabManager {
         networkName,
         targetIp,
         { LAB_MODULE: String(moduleId) },
-        template.target_memory_mb || 192
+        template.target_memory_mb || 192,
+        targetCaps
       );
 
       // Start containers
@@ -288,13 +285,15 @@ export class LabManager {
 
     // Create new target
     const targetName = `biulms-tgt-${env.student_id}`;
+    const targetCaps = (template.target_caps || 'NET_RAW').split(',').map(c => c.trim()).filter(Boolean);
     const newContainerId = await dockerService.createContainer(
       template.target_image,
       targetName,
       env.network_name,
       env.target_ip,
       { LAB_MODULE: String(env.module_id) },
-      template.target_memory_mb || 192
+      template.target_memory_mb || 192,
+      targetCaps
     );
 
     await dockerService.startContainer(newContainerId);
@@ -377,7 +376,13 @@ export class LabManager {
       WHERE status = 'running' AND last_activity_at < datetime('now', '-30 minutes')
     `).all() as { id: number }[];
 
-    const toDestroy = new Set([...expired.map(e => e.id), ...idle.map(e => e.id)]);
+    // Also clean up failed provisions older than 5 minutes (orphaned Docker resources)
+    const stuckFailed = db.prepare(`
+      SELECT id FROM lab_environments
+      WHERE status = 'failed' AND created_at < datetime('now', '-5 minutes')
+    `).all() as { id: number }[];
+
+    const toDestroy = new Set([...expired.map(e => e.id), ...idle.map(e => e.id), ...stuckFailed.map(e => e.id)]);
     let count = 0;
 
     for (const envId of toDestroy) {
