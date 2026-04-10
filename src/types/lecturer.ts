@@ -23,7 +23,7 @@ export interface LoginSession {
 export type SortKey = 'student_id' | 'last_login' | 'modules_visited' | 'avg_score';
 export type SortDir = 'asc' | 'desc';
 
-export type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face' | 'scoreboard' | 'audit' | 'fraud' | 'lecturers';
+export type SidebarTab = 'dashboard' | 'students' | 'history' | 'content' | 'face' | 'scoreboard' | 'audit' | 'fraud' | 'lecturers' | 'labs';
 
 export interface FaceStatusRow {
   student_id: string;
@@ -59,4 +59,27 @@ export interface FaceMismatchLog {
   matched: number;
   attempt_number: number;
   created_at: string;
+}
+
+export interface LabSessionRow {
+  id: number;
+  student_id: string;
+  student_name: string | null;
+  module_id: number;
+  lab_name: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  objectives_completed: string | null;
+  auto_grade_score: number | null;
+  template_objectives: string | null;
+}
+
+export interface LabReportStats {
+  total_sessions: number;
+  graded_sessions: number;
+  avg_score: number | null;
+  avg_duration_minutes: number | null;
+  high_score_count: number;
+  unique_students: number;
 }

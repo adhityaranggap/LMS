@@ -17,6 +17,7 @@ import {
   FileSearch,
   ShieldAlert,
   UserCog,
+  FlaskConical,
 } from 'lucide-react';
 import { AuditLogViewer } from '../components/AuditLogViewer';
 import { FraudDashboard } from '../components/FraudDashboard';
@@ -35,6 +36,7 @@ import { FaceRecognitionTab } from './lecturer/FaceRecognitionTab';
 import { HistoryTab } from './lecturer/HistoryTab';
 import { LecturersTab } from './lecturer/LecturersTab';
 import { ContentEditorTab } from './lecturer/ContentEditorTab';
+import { LabReportsTab } from './lecturer/LabReportsTab';
 
 const AccessDenied = () => (
   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
@@ -236,6 +238,7 @@ export const LecturerDashboard: React.FC = () => {
     { key: 'content',   label: 'Edit Materi',      icon: BookOpen,        allowed: canManageContent },
     { key: 'face',      label: 'Face Recognition', icon: ScanFace,        allowed: canManageEnrollment },
     { key: 'scoreboard', label: 'Scoreboard',      icon: TrendingUp,      allowed: canViewStudents },
+    { key: 'labs',      label: 'Lab Reports',      icon: FlaskConical,    allowed: canViewStudents },
     { key: 'audit',     label: 'Audit Log',        icon: FileSearch,      allowed: canViewAuditLogs },
     { key: 'fraud',     label: 'Fraud Detection',  icon: ShieldAlert,     allowed: canViewFraud },
     { key: 'lecturers', label: 'Manage Lecturers', icon: UserCog,         allowed: canManageLecturers },
@@ -385,6 +388,10 @@ export const LecturerDashboard: React.FC = () => {
               scoreboardCourse={scoreboardCourse}
               setScoreboardCourse={setScoreboardCourse}
             />
+          ))}
+
+          {activeTab === 'labs' && (!canViewStudents ? <AccessDenied /> : (
+            <LabReportsTab isActive={activeTab === 'labs'} />
           ))}
 
           {activeTab === 'audit' && (canViewAuditLogs ? <AuditLogViewer /> : <AccessDenied />)}

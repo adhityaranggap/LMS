@@ -249,4 +249,71 @@ router.get('/admin/sessions', labAdminOnly, (_req: AuthenticatedRequest, res: Re
   res.json(sessions);
 });
 
+// GET /api/labs/admin/reports — Paginated lab session results for lecturers
+router.get('/admin/reports', labAdminOnly, (req: AuthenticatedRequest, res: Response) => {
+  const tenantId = (req.user as any).tenant_id ?? 1;
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '25'), 10)));
+  const offset = (page - 1) * limit;
+  const studentFilter = String(req.query.student || '').trim();
+  const moduleFilter = parseInt(String(req.query.module || '0'), 10);
+
+  const likePat = studentFilter ? `%${studentFilter}%` : '%';
+  const filterModule = moduleFilter > 0 ? moduleFilter : null;
+
+  const sessions = db.prepare(`
+    SELECT
+      ls.id,
+      ls.student_id,
+      s.full_name AS student_name,
+      ls.module_id,
+      lt.name AS lab_name,
+      ls.started_at,
+      ls.ended_at,
+      ls.duration_seconds,
+      ls.objectives_completed,
+      ls.auto_grade_score,
+      lt.objectives AS template_objectives
+    FROM lab_sessions ls
+    LEFT JOIN students s ON s.student_id = ls.student_id
+    LEFT JOIN lab_environments le ON le.id = ls.environment_id
+    LEFT JOIN lab_templates lt ON lt.id = le.template_id
+    WHERE ls.tenant_id = ?
+      AND (ls.student_id LIKE ? OR s.full_name LIKE ?)
+      AND (? IS NULL OR ls.module_id = ?)
+    ORDER BY ls.started_at DESC
+    LIMIT ? OFFSET ?
+  `).all(tenantId, likePat, likePat, filterModule, filterModule, limit, offset);
+
+  const { total } = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM lab_sessions ls
+    LEFT JOIN students s ON s.student_id = ls.student_id
+    WHERE ls.tenant_id = ?
+      AND (ls.student_id LIKE ? OR s.full_name LIKE ?)
+      AND (? IS NULL OR ls.module_id = ?)
+  `).get(tenantId, likePat, likePat, filterModule, filterModule) as { total: number };
+
+  res.json({ sessions, total, page, limit });
+});
+
+// GET /api/labs/admin/report-stats — Aggregate stats for lab reports overview
+router.get('/admin/report-stats', labAdminOnly, (req: AuthenticatedRequest, res: Response) => {
+  const tenantId = (req.user as any).tenant_id ?? 1;
+
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) AS total_sessions,
+      COUNT(CASE WHEN auto_grade_score IS NOT NULL THEN 1 END) AS graded_sessions,
+      ROUND(AVG(CASE WHEN auto_grade_score IS NOT NULL THEN auto_grade_score END), 1) AS avg_score,
+      ROUND(AVG(CASE WHEN duration_seconds IS NOT NULL THEN duration_seconds END) / 60.0, 1) AS avg_duration_minutes,
+      COUNT(CASE WHEN auto_grade_score >= 80 THEN 1 END) AS high_score_count,
+      COUNT(DISTINCT student_id) AS unique_students
+    FROM lab_sessions
+    WHERE tenant_id = ?
+  `).get(tenantId);
+
+  res.json(stats);
+});
+
 export default router;
