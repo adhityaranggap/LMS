@@ -298,8 +298,8 @@ db.exec(`
     description TEXT,
     attacker_image TEXT DEFAULT 'biulms-attacker:latest',
     target_image TEXT DEFAULT 'biulms-target:latest',
-    attacker_memory_mb INTEGER DEFAULT 384,
-    target_memory_mb INTEGER DEFAULT 384,
+    attacker_memory_mb INTEGER DEFAULT 128,
+    target_memory_mb INTEGER DEFAULT 192,
     time_limit_minutes INTEGER DEFAULT 120,
     objectives TEXT,
     is_active INTEGER DEFAULT 1,
@@ -587,6 +587,10 @@ function migrateIfNeeded() {
       insertTemplate.run(t.module_id, t.name, t.description, t.objectives);
     }
   }
+
+  // Reduce lab container memory for multi-student concurrency (384→128/192)
+  db.prepare("UPDATE lab_templates SET attacker_memory_mb = 128 WHERE attacker_memory_mb = 384").run();
+  db.prepare("UPDATE lab_templates SET target_memory_mb = 192 WHERE target_memory_mb = 384").run();
 
   // Add manage_lecturers permission and assign to lecturer role
   const managePermExists = db.prepare("SELECT id FROM permissions WHERE name = 'manage_lecturers'").get() as { id: number } | undefined;
