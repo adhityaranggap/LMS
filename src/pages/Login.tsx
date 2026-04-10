@@ -57,20 +57,15 @@ export const Login = () => {
   const handleNimSubmit = async () => {
     if (!studentId.trim()) return;
     setError('');
-    const status = await checkFaceStatus(studentId.trim());
-
-    if (!status.enrolled) {
-      setError(`NIM ${studentId.trim()} belum terdaftar dalam sistem. Hubungi dosen Anda untuk mendaftarkan NIM ini.`);
-      return;
+    setSubmitting(true);
+    try {
+      // Direct login — no face verification required
+      await login(studentId.trim(), '', undefined, true);
+    } catch (err: any) {
+      setError(err.message || 'Login gagal');
+    } finally {
+      setSubmitting(false);
     }
-
-    setFaceRegistered(status.registered);
-
-    if (!status.registered) {
-      // Enrolled but face not yet registered — go to registration wizard
-      setStep('face-register');
-    }
-    // If registered, stay on step 1 for single-photo verification login
   };
 
   const handleFaceRegistrationComplete = async () => {
