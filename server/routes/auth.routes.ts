@@ -199,9 +199,9 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
     const existingStudent = db.prepare('SELECT student_id, is_enrolled FROM students WHERE student_id = ?')
       .get(studentId) as { student_id: string; is_enrolled: number } | undefined;
 
+    // Auto-enroll if student exists but was previously unenrolled
     if (existingStudent && !existingStudent.is_enrolled) {
-      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.', code: 'NOT_ENROLLED', student_id: studentId });
-      return;
+      db.prepare('UPDATE students SET is_enrolled = 1 WHERE student_id = ?').run(studentId);
     }
 
     // Encrypt photo before storage
@@ -216,10 +216,8 @@ router.post('/student-login', async (req: Request, res: Response): Promise<void>
         db.prepare('UPDATE students SET course_id = ? WHERE student_id = ?').run(courseId, studentId);
       }
     } else {
-      // Auto-create student record (not enrolled by default — lecturer must enroll)
-      db.prepare('INSERT INTO students (student_id, photo, is_enrolled, course_id) VALUES (?, ?, 0, ?)').run(studentId, encryptedPhoto, courseId);
-      res.status(403).json({ error: 'Student not enrolled. Contact your lecturer for enrollment.', code: 'NOT_ENROLLED', student_id: studentId });
-      return;
+      // Auto-create student record and enroll immediately
+      db.prepare('INSERT INTO students (student_id, photo, is_enrolled, course_id) VALUES (?, ?, 1, ?)').run(studentId, encryptedPhoto, courseId);
     }
 
     // --- Face verification for registered students ---
