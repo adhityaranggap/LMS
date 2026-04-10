@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Prepare SSH directory
 RUN mkdir -p /run/sshd
 
+# Pre-create student user (avoids useradd at runtime which needs dropped capabilities)
+RUN useradd -m -s /bin/bash student
+
 # All services disabled by default — module scripts enable what's needed
 COPY entrypoints/ /opt/lab-setup/
 RUN chmod +x /opt/lab-setup/*.sh

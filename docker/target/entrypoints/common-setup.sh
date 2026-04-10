@@ -3,8 +3,8 @@ set -e
 
 echo "[lab-setup] Starting common setup..."
 
-# Create base student user if not exists
-id -u student &>/dev/null || useradd -m -s /bin/bash student
+# Create base student user if not exists (pre-created in Dockerfile; this is a fallback)
+id -u student &>/dev/null || useradd -m -s /bin/bash student || true
 
 # Run module-specific setup if LAB_MODULE is set
 if [ "$LAB_MODULE" -gt 0 ] 2>/dev/null; then
