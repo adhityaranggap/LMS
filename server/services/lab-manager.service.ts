@@ -56,6 +56,33 @@ function allocateSubnet(): { subnet: string; attackerIp: string; targetIp: strin
   };
 }
 
+// On startup, advance subnetCounter past any already-in-use subnets so restarts
+// don't collide with still-running lab networks.
+async function initSubnetCounter(): Promise<void> {
+  try {
+    const Docker = (await import('dockerode')).default;
+    const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+    const networks = await docker.listNetworks({ filters: { label: ['biulms=lab'] } });
+    let maxX = 0;
+    for (const n of networks) {
+      const info = await docker.getNetwork(n.Id).inspect() as { IPAM?: { Config?: { Subnet?: string }[] } };
+      const subnet = info.IPAM?.Config?.[0]?.Subnet;
+      if (subnet) {
+        const match = subnet.match(/^10\.10\.(\d+)\./);
+        if (match) maxX = Math.max(maxX, Number(match[1]));
+      }
+    }
+    if (maxX > 0) {
+      subnetCounter = maxX + 1;
+      logger.info('Subnet counter initialized from existing networks', { tag: 'lab', subnetCounter });
+    }
+  } catch {
+    // Docker not available — counter stays at 1
+  }
+}
+
+void initSubnetCounter();
+
 export class LabManager {
   async provisionEnvironment(
     studentId: string,
