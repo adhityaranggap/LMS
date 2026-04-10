@@ -166,22 +166,22 @@ export const LabSimulation: React.FC<LabSimulationProps> = ({ moduleId }) => {
   // Not launched yet
   if (!env) {
     return (
-      <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-8 text-white mb-6">
+      <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm mb-6">
         <div className="flex items-start gap-4">
-          <div className="p-3 bg-emerald-500/20 rounded-xl">
-            <Shield className="w-8 h-8 text-emerald-400" />
+          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+            <Shield className="w-8 h-8 text-emerald-600" />
           </div>
           <div className="flex-1">
-            <h3 className="text-xl font-bold mb-2">{template.name}</h3>
-            <p className="text-slate-300 text-sm mb-4">{template.description}</p>
-            <div className="flex items-center gap-4 text-xs text-slate-400 mb-6">
+            <h3 className="text-xl font-bold text-slate-900 mb-2">{template.name}</h3>
+            <p className="text-slate-600 text-sm mb-4">{template.description}</p>
+            <div className="flex items-center gap-4 text-xs text-slate-500 mb-6">
               <span>Time limit: {template.time_limit_minutes} min</span>
               <span>{objectives.length} objectives</span>
             </div>
             <button
               onClick={handleProvision}
               disabled={provisioning}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {provisioning ? (
                 <>
@@ -198,7 +198,7 @@ export const LabSimulation: React.FC<LabSimulationProps> = ({ moduleId }) => {
           </div>
         </div>
         {provisioning && (
-          <div className="mt-4 bg-slate-700/50 rounded-lg p-4 text-sm text-slate-300">
+          <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-600">
             <p>Creating isolated Docker containers for your lab session...</p>
             <p className="text-xs text-slate-400 mt-1">This typically takes 5-15 seconds</p>
           </div>
